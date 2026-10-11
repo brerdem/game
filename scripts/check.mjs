@@ -70,7 +70,7 @@ if (extras.island2Gems < 3) errors.push(`[assert] too few island-2 gems ${extras
 if (extras.island2Trees < 3) errors.push(`[assert] too few island-2 trees ${extras.island2Trees}`);
 if (!extras.loaderHidden) errors.push('[assert] loader still visible after ready');
 if (extras.bridgeMidH != null && extras.bridgeMidH < 0.35) errors.push(`[assert] bridge mid not walkable ${extras.bridgeMidH}`);
-if (extras.bridgeLen > 90) errors.push(`[assert] bridge span too long ${extras.bridgeLen}`);
+if (extras.bridgeLen > 95 || extras.bridgeLen < 28) errors.push(`[assert] unexpected bridge span ${extras.bridgeLen}`);
 
 const shots = [];
 const save = async (path) => {

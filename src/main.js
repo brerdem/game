@@ -3,7 +3,7 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createNoise2D } from 'simplex-noise';
 import { applyTerrainSplat, bakeHeightTexture, createClouds, createEnvironment, createOcean, loadManager } from './look.js';
-import { createGroundCover, plantTrees } from './nature.js';
+import { createGroundCover, plantBridgeLandings, plantTrees } from './nature.js';
 import { createVineBridge } from './bridge.js';
 import { createBirds } from './birds.js';
 
@@ -197,14 +197,18 @@ for (let i = 0; i < 5; i++) {
   if (!clash) ramps.push(rp);
 }
 function addHillPath(hx, hz, inwardX, inwardZ) {
-  const topH = terrainHeight(hx, hz);
   const dx = inwardX - hx, dz = inwardZ - hz;
   const len = Math.hypot(dx, dz) || 1;
-  const L = 20;
-  const sx = hx + (dx / len) * L, sz = hz + (dz / len) * L;
+  const ux = dx / len, uz = dz / len;
+  // Stop short of the hilltop so no wooden platform/block sits at the bridge landing.
+  const gap = 3.4;
+  const L = 16;
+  const endX = hx + ux * gap, endZ = hz + uz * gap;
+  const sx = endX + ux * L, sz = endZ + uz * L;
   const base = terrainHeight(sx, sz) - 0.05;
-  const yaw = Math.atan2(hx - sx, hz - sz);
-  ramps.push({ sx, sz, yaw, L, W: 4.2, PL: 5.8, rise: Math.max(2.2, topH - base - 0.2), base, kind: 'path' });
+  const top = terrainHeight(endX, endZ);
+  const yaw = Math.atan2(endX - sx, endZ - sz);
+  ramps.push({ sx, sz, yaw, L, W: 3.6, PL: 0, rise: top - base, base, kind: 'path' });
 }
 addHillPath(HILL_A.x, HILL_A.z, 0, 0);
 addHillPath(HILL_B.x, HILL_B.z, ISLAND2.x, ISLAND2.z);
@@ -277,8 +281,8 @@ const ocean = createOcean(scene, sunDir, { heightTex, WORLD, LOW, software });
   const span = Math.hypot(bTop.x - aTop.x, bTop.z - aTop.z);
   const sag = Math.min(Math.max(3.2, Math.min(aTop.y, bTop.y) * 0.34), span * 0.14);
   bridge = createVineBridge(scene, {
-    a: { x: aTop.x, y: aTop.y + 0.18, z: aTop.z },
-    b: { x: bTop.x, y: bTop.y + 0.18, z: bTop.z },
+    a: { x: aTop.x, y: aTop.y + 0.02, z: aTop.z },
+    b: { x: bTop.x, y: bTop.y + 0.02, z: bTop.z },
     sag,
   });
 }
@@ -1034,6 +1038,21 @@ async function boot() {
   });
   vegStats.grass = groundCover.grass;
   vegStats.flowers = groundCover.flowers;
+  if (bridge) {
+    const dx = bridge.b.x - bridge.a.x, dz = bridge.b.z - bridge.a.z;
+    const L = Math.hypot(dx, dz) || 1;
+    const dirx = dx / L, dirz = dz / L;
+    const sidex = -dirz, sidez = dirx;
+    plantBridgeLandings(scene, {
+      terrainHeight,
+      rand,
+      addTrunk,
+      ends: [
+        { x: bridge.a.x, z: bridge.a.z, dirx, dirz, sidex, sidez },
+        { x: bridge.b.x, z: bridge.b.z, dirx: -dirx, dirz: -dirz, sidex, sidez },
+      ],
+    });
+  }
   stampTrees(vegStats.treePts);
   setLoad(0.93);
   buildTrampolines();

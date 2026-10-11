@@ -155,6 +155,33 @@ const cross = await page.evaluate(() => {
 console.log('cross', JSON.stringify(cross));
 if (!cross.ok) errors.push(`[assert] bridge walk/drown ${JSON.stringify(cross)}`);
 
+const onto = await page.evaluate(() => {
+  const b = game.bridge;
+  if (!b) return { a: { ok: false }, b: { ok: false } };
+  const dx = b.b.x - b.a.x, dz = b.b.z - b.a.z;
+  const L = Math.hypot(dx, dz) || 1;
+  const ux = dx / L, uz = dz / L;
+  const walkOn = (from, toward) => {
+    const x0 = from.x - toward.x * 2.6, z0 = from.z - toward.z * 2.6;
+    game.teleport(x0, game.groundHeight(x0, z0), z0);
+    game.setYaw(Math.atan2(from.x + toward.x * 8 - x0, from.z + toward.z * 8 - z0) + Math.PI);
+    game.simulate(3.4, { KeyW: true });
+    const p = game.player.pos;
+    const along = (p.x - from.x) * toward.x + (p.z - from.z) * toward.z;
+    const on = b.surface(p.x, p.z) > -1000;
+    return {
+      ok: on && along > 0.5 && p.y > 4,
+      along: +along.toFixed(2),
+      y: +p.y.toFixed(2),
+      onBridge: on,
+    };
+  };
+  return { a: walkOn(b.a, { x: ux, z: uz }), b: walkOn(b.b, { x: -ux, z: -uz }) };
+});
+console.log('hillOntoBridge', JSON.stringify(onto));
+if (!onto.a.ok) errors.push(`[assert] hill A onto bridge ${JSON.stringify(onto.a)}`);
+if (!onto.b.ok) errors.push(`[assert] hill B onto bridge ${JSON.stringify(onto.b)}`);
+
 const shots = [];
 const save = async (path) => {
   mkdirSync(dirname(path), { recursive: true });
@@ -334,6 +361,25 @@ if (extraDir) {
     const lookZ = br.az + (br.bz - br.az) * 0.62;
     await lookAt(lookX, Math.max(br.my, 1.4), lookZ, camX, br.ay + 1.35, camZ, -0.08);
     await save(`${extraDir}/vine_bridge.png`);
+
+    const endShot = async (origin, towardX, towardZ, name) => {
+      const sideX2 = -towardZ, sideZ2 = towardX;
+      const sl2 = Math.hypot(sideX2, sideZ2) || 1;
+      await lookAt(
+        origin.x + towardX * 2.2,
+        origin.y + 0.4,
+        origin.z + towardZ * 2.2,
+        origin.x - towardX * 2.4 + (sideX2 / sl2) * 4.6,
+        origin.y + 1.7,
+        origin.z - towardZ * 2.4 + (sideZ2 / sl2) * 4.6,
+        -0.18,
+      );
+      await save(`${extraDir}/${name}`);
+    };
+    const tux = (br.bx - br.ax), tuz = (br.bz - br.az);
+    const tL = Math.hypot(tux, tuz) || 1;
+    await endShot({ x: br.ax, y: br.ay, z: br.az }, tux / tL, tuz / tL, 'bridge_end_a.png');
+    await endShot({ x: br.bx, y: br.by, z: br.bz }, -tux / tL, -tuz / tL, 'bridge_end_b.png');
 
     await page.evaluate(() => {
       const list = game.birds?.list || [];

@@ -281,6 +281,39 @@ export async function plantTrees(scene, { scatter, addTrunk, rand, renderer, LOW
   return { trees, bushes, treePts };
 }
 
+export function plantBridgeLandings(scene, { ends, terrainHeight, rand, addTrunk }) {
+  if (!ends?.length) return 0;
+  let planted = 0;
+  ends.forEach((end, ei) => {
+    const pts = [];
+    for (const side of [-1, 1]) {
+      for (let k = 0; k < 3; k++) {
+        const along = -0.6 - k * 1.05;
+        const lat = side * (2.35 + (k % 2) * 0.7 + (ei * 0.08));
+        const x = end.x + end.dirx * along + end.sidex * lat;
+        const z = end.z + end.dirz * along + end.sidez * lat;
+        const h = terrainHeight(x, z);
+        if (h < 2.4) continue;
+        if (Math.abs(lat) < 1.85) continue;
+        pts.push({ x, y: h, z });
+      }
+    }
+    if (!pts.length) return;
+    const proto = makeTree(['Bush 1', 'Bush 2', 'Bush 3'][ei % 3], 330 + ei * 17, {
+      leaves: { size: 1.22 },
+    });
+    instanceFromTree(scene, proto, pts, {
+      sink: 0.08,
+      targetH: 1.28 + (ei % 2) * 0.18,
+      scaleJitter: 0.26,
+      rand,
+      onEach: (p, r) => addTrunk?.(p.x, p.z, Math.max(0.16, r * 0.55)),
+    });
+    planted += pts.length;
+  });
+  return planted;
+}
+
 function bladeGeometry() {
   const H = 0.32;
   const a = new THREE.PlaneGeometry(0.038, H, 1, 3);

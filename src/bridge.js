@@ -101,21 +101,35 @@ export function createVineBridge(scene, { a, b, sag = 5.2 }) {
   cable(-W * 0.42, 0.42, 0.028, vine, 22);
   cable(W * 0.42, 0.42, 0.028, vine, 22);
 
-  function post(x, y, z) {
-    const p = new THREE.Group();
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 2.4, 8), wood);
-    pole.position.y = 1.15;
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), wood);
-    cap.position.y = 2.38;
-    p.add(pole, cap);
-    p.position.set(x, y, z);
-    p.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-    group.add(p);
+  // Slim rope ties instead of bulky wooden posts/blocks at the landings.
+  function stake(x, y, z) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.034, 0.92, 6), rope);
+    pole.position.set(x, y + 0.4, z);
+    const coil = new THREE.Mesh(new THREE.TorusGeometry(0.065, 0.018, 5, 8), vine);
+    coil.position.set(x, y + 0.16, z);
+    coil.rotation.x = Math.PI / 2;
+    pole.castShadow = coil.castShadow = true;
+    group.add(pole, coil);
   }
   for (const s of [-1, 1]) {
-    post(a.x + sideX * 0.95 * s, y0 - 0.05, a.z + sideZ * 0.95 * s);
-    post(b.x + sideX * 0.95 * s, y1 - 0.05, b.z + sideZ * 0.95 * s);
+    stake(a.x + sideX * 0.92 * s - dirx * 0.15, y0, a.z + sideZ * 0.92 * s - dirz * 0.15);
+    stake(b.x + sideX * 0.92 * s + dirx * 0.15, y1, b.z + sideZ * 0.92 * s + dirz * 0.15);
   }
+
+  // Two extra planks rest on each hilltop so the deck meets the grass.
+  function landingPlanks(origin, inlandX, inlandZ, y) {
+    for (let k = 0; k < 2; k++) {
+      const t = 0.22 + k * 0.48;
+      const plank = new THREE.Mesh(plankGeo, wood);
+      plank.position.set(origin.x - inlandX * t, y + 0.04, origin.z - inlandZ * t);
+      plank.rotation.y = Math.atan2(dirx, dirz);
+      plank.castShadow = true;
+      plank.receiveShadow = true;
+      group.add(plank);
+    }
+  }
+  landingPlanks(a, dirx, dirz, y0);
+  landingPlanks(b, -dirx, -dirz, y1);
 
   scene.add(group);
 
@@ -124,7 +138,7 @@ export function createVineBridge(scene, { a, b, sag = 5.2 }) {
     const vx = x - a.x, vz = z - a.z;
     const along = vx * dirx + vz * dirz;
     const lat = vx * sideX + vz * sideZ;
-    if (along < -0.25 || along > L + 0.25 || Math.abs(lat) > hw) return -Infinity;
+    if (along < -0.95 || along > L + 0.95 || Math.abs(lat) > hw) return -Infinity;
     const t = Math.min(1, Math.max(0, along / L));
     return catenaryY(t, y0, y1, sag);
   }

@@ -29,9 +29,16 @@ page.on('response', (res) => {
 await page.goto(url, { waitUntil: 'domcontentloaded' });
 if (extraDir) {
   mkdirSync(extraDir, { recursive: true });
-  await page.waitForSelector('#loader:not(.hidden)', { timeout: 8000 }).catch(() => {});
-  await page.waitForTimeout(120);
-  await page.screenshot({ path: `${extraDir}/loading.png`, timeout: 60000 });
+  await page.waitForFunction(() => {
+    const el = document.getElementById('loader');
+    const fill = document.getElementById('loader-fill');
+    if (!el || el.classList.contains('hidden')) return false;
+    const w = parseFloat(fill?.style.width || '0');
+    return w >= 4 || (el.querySelector('h1')?.textContent || '').length > 0;
+  }, null, { timeout: 15000 }).catch(() => {});
+  await page.locator('#loader').screenshot({ path: `${extraDir}/loading.png`, timeout: 60000 }).catch(async () => {
+    await page.screenshot({ path: `${extraDir}/loading.png`, timeout: 60000 });
+  });
   console.log('wrote', `${extraDir}/loading.png`);
 }
 await page.waitForFunction(() => window.__ready === true && window.game?.modelsLoaded === true, null, { timeout: 180000 });
@@ -76,7 +83,8 @@ if (!extras.hasBridge || extras.bridgeLen < 20) errors.push(`[assert] missing vi
 if (extras.island2Gems < 3) errors.push(`[assert] too few island-2 gems ${extras.island2Gems}`);
 if (extras.island2Trees < 3) errors.push(`[assert] too few island-2 trees ${extras.island2Trees}`);
 if (!extras.loaderHidden) errors.push('[assert] loader still visible after ready');
-if (extras.bridgeMidH != null && extras.bridgeMidH < 0) errors.push(`[assert] bridge mid not walkable ${extras.bridgeMidH}`);
+if (extras.bridgeMidH != null && extras.bridgeMidH < 0.35) errors.push(`[assert] bridge mid not walkable ${extras.bridgeMidH}`);
+if (extras.bridgeLen > 90) errors.push(`[assert] bridge span too long ${extras.bridgeLen}`);
 
 const shots = [];
 const save = async (path) => {
@@ -202,12 +210,30 @@ if (extraDir) {
   if (br) {
     const sideX = -(br.bz - br.az), sideZ = (br.bx - br.ax);
     const sl = Math.hypot(sideX, sideZ) || 1;
-    const camX = br.mx + (sideX / sl) * 42;
-    const camZ = br.mz + (sideZ / sl) * 42;
-    await lookAt(br.mx, br.my + 2, br.mz, camX, br.my + 18, camZ, -0.38);
+    const camX = br.ax + (br.bx - br.ax) * 0.22 + (sideX / sl) * 11;
+    const camZ = br.az + (br.bz - br.az) * 0.22 + (sideZ / sl) * 11;
+    const lookX = br.ax + (br.bx - br.ax) * 0.55;
+    const lookZ = br.az + (br.bz - br.az) * 0.55;
+    await lookAt(lookX, br.my + 1.2, lookZ, camX, br.ay + 2.4, camZ, -0.12);
     await save(`${extraDir}/vine_bridge.png`);
+    await page.evaluate(() => {
+      const p = game.spawn;
+      game.teleport(p.x, game.groundHeight(p.x, p.z), p.z);
+      game.camera.rotation.x = -0.06;
+    });
+    await page.waitForTimeout(200);
     await page.screenshot({ path: `${extraDir}/hud.png`, timeout: 60000 });
     console.log('wrote', `${extraDir}/hud.png`);
+
+    await page.evaluate(() => {
+      const l = document.getElementById('loader');
+      l.classList.remove('hidden');
+      document.getElementById('loader-fill').style.width = '58%';
+      document.getElementById('loader-pct').textContent = '58%';
+    });
+    await page.locator('#loader').screenshot({ path: `${extraDir}/loading.png`, timeout: 60000 });
+    await page.evaluate(() => document.getElementById('loader').classList.add('hidden'));
+    console.log('wrote', `${extraDir}/loading.png`);
 
     const walk = await page.evaluate(({ br }) => {
       const x0 = br.ax + (br.bx - br.ax) * 0.18;

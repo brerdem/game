@@ -246,26 +246,35 @@ applyTerrainSplat(terrain);
 const heightTex = bakeHeightTexture(terrainHeight, WORLD);
 const ocean = createOcean(scene, sunDir, { heightTex, WORLD, LOW, software });
 
-function findShoreToward(from, to, landMin = 1.35) {
+function findShoreToward(from, to, landMin = 2.7) {
   const dx = to.x - from.x, dz = to.z - from.z;
   const L = Math.hypot(dx, dz) || 1;
   const ux = dx / L, uz = dz / L;
   let last = { x: from.x, z: from.z, y: terrainHeight(from.x, from.z) };
-  for (let t = 0; t <= L; t += 0.7) {
+  let waterRun = 0;
+  for (let t = 0; t <= L; t += 0.5) {
     const x = from.x + ux * t, z = from.z + uz * t;
     const h = terrainHeight(x, z);
-    if (h >= landMin) last = { x, z, y: h };
-    else if (last.y >= landMin) return last;
+    if (h >= landMin) {
+      last = { x, z, y: h };
+      waterRun = 0;
+    } else if (last.y >= landMin) {
+      waterRun += 0.5;
+      if (waterRun > 10) return last;
+    }
   }
   return last;
 }
 {
-  const aShore = findShoreToward({ x: 0, z: 0 }, ISLAND2, 1.4);
-  const bShore = findShoreToward({ x: ISLAND2.x, z: ISLAND2.z }, { x: 0, z: 0 }, 1.4);
+  const aShore = findShoreToward({ x: 0, z: 0 }, ISLAND2, 2.75);
+  const bShore = findShoreToward({ x: ISLAND2.x, z: ISLAND2.z }, { x: 0, z: 0 }, 2.75);
+  const y0 = aShore.y + 0.2, y1 = bShore.y + 0.2;
+  const span = Math.hypot(bShore.x - aShore.x, bShore.z - aShore.z);
+  const sag = Math.min(Math.max(0.85, Math.min(y0, y1) - 0.7), span * 0.09);
   bridge = createVineBridge(scene, {
-    a: { x: aShore.x, y: aShore.y + 0.12, z: aShore.z },
-    b: { x: bShore.x, y: bShore.y + 0.12, z: bShore.z },
-    sag: 5.4,
+    a: { x: aShore.x, y: y0, z: aShore.z },
+    b: { x: bShore.x, y: y1, z: bShore.z },
+    sag,
   });
 }
 

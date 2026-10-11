@@ -34,8 +34,8 @@ export function createVineBridge(scene, { a, b, sag = 5.2 }) {
   const dirx = dx / L, dirz = dz / L;
   const sideX = -dirz, sideZ = dirx;
   const y0 = a.y, y1 = b.y;
-  const W = 1.7;
-  const plankN = Math.max(18, Math.round(L / 1.15));
+  const W = 1.9;
+  const plankN = Math.max(22, Math.round(L / 0.95));
   const wood = woodMat();
   const vine = vineMat();
   const rope = ropeMat();

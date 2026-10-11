@@ -94,9 +94,36 @@ if (!extras.loaderHidden) errors.push('[assert] loader still visible after ready
 if (extras.bridgeMidH != null && extras.bridgeMidH < 3.5) errors.push(`[assert] bridge not high enough ${extras.bridgeMidH}`);
 if (extras.bridgeLen > 200 || extras.bridgeLen < 24) errors.push(`[assert] unexpected bridge span ${extras.bridgeLen}`);
 if (extras.birds < 6) errors.push(`[assert] missing birds ${extras.birds}`);
-if (extras.seaGap < 40 || extras.seaGap > 78) errors.push(`[assert] sea gap not 40–70 m: ${extras.seaGap}`);
+if (extras.seaGap < 27 || extras.seaGap > 34) errors.push(`[assert] sea gap not ~30 m: ${extras.seaGap}`);
 if (extras.hillA && extras.hillA.y < 8) errors.push(`[assert] hill A too low ${extras.hillA.y}`);
 if (extras.hillB && extras.hillB.y < 7) errors.push(`[assert] hill B too low ${extras.hillB.y}`);
+
+const birdH = await page.evaluate(() => {
+  const list = game.birds?.list || [];
+  return list.map((b) => +b.mesh.position.y.toFixed(2));
+});
+console.log('birdHeights', JSON.stringify(birdH));
+if (birdH.length < 6 || birdH.some((y) => y < 34 || y > 72)) {
+  errors.push(`[assert] seagull heights ${JSON.stringify(birdH)}`);
+}
+
+const stab = await page.evaluate(() => {
+  const ys = [];
+  for (let i = 0; i < 28; i++) {
+    const t = i * 0.15;
+    game.bridge.update(t);
+    game.renderer.render(game.scene, game.camera);
+    ys.push(+game.bridge.midWorldY().toFixed(5));
+  }
+  const min = Math.min(...ys), max = Math.max(...ys);
+  return { min, max, delta: +(max - min).toFixed(5), ys };
+});
+console.log('bridgeStable', JSON.stringify(stab));
+if (stab.delta > 0.002) errors.push(`[assert] bridge still bobbing ${JSON.stringify(stab)}`);
+if (extraDir) {
+  mkdirSync(extraDir, { recursive: true });
+  writeFileSync(`${extraDir}/bridge_y_samples.json`, JSON.stringify(stab, null, 2));
+}
 
 const cross = await page.evaluate(() => {
   const b = game.bridge;
@@ -197,6 +224,22 @@ if (extraDir) {
   await save(`${extraDir}/sea_and_shore.png`);
   await save(`${extraDir}/grass_shore.png`);
 
+  const gapView = await page.evaluate(() => {
+    const i2 = game.ISLAND2;
+    const L = Math.hypot(i2.x, i2.z) || 1;
+    const ux = i2.x / L, uz = i2.z / L;
+    const px = ux * 162, pz = uz * 162;
+    const lx = ux * 196, lz = uz * 196;
+    const sideX = -uz, sideZ = ux;
+    return {
+      px: px + sideX * 6, pz: pz + sideZ * 6,
+      py: Math.max(game.terrainHeight(px, pz), 1.4) + 1.6,
+      lx, lz, ly: 2,
+    };
+  });
+  await lookAt(gapView.lx, gapView.ly, gapView.lz, gapView.px, gapView.py, gapView.pz, -0.06);
+  await save(`${extraDir}/gap_30m.png`);
+
   await page.evaluate(() => {
     const p = game.spawn;
     const y = game.groundHeight(p.x, p.z);
@@ -289,25 +332,23 @@ if (extraDir) {
     await save(`${extraDir}/vine_bridge.png`);
 
     await page.evaluate(() => {
-      const flock = game.birds;
-      const list = flock?.list || [];
-      const bird = list[0] || null;
-      if (bird?.mesh) {
-        const p = bird.mesh.position;
-        p.set(36, 22, -6);
-        bird.vel?.set(6, 0.2, 1.5);
-        game.teleport(18, game.groundHeight(18, 8), 8);
-        game.setYaw(Math.atan2(p.x - 18, p.z - 8) + Math.PI);
-        game.camera.rotation.x = 0.42;
-      } else {
-        const p = game.spawn;
-        game.teleport(p.x, game.groundHeight(p.x, p.z), p.z);
-        game.camera.rotation.x = 0.55;
-      }
+      const list = game.birds?.list || [];
+      list.forEach((b, i) => {
+        const a = (i / Math.max(1, list.length)) * Math.PI * 0.7 - 0.3;
+        b.mesh.position.set(Math.sin(a) * 14, 38 + (i % 3) * 2.2, -18 - Math.cos(a) * 6);
+        b.vel?.set(Math.cos(a) * 8, 0, Math.sin(a) * 4);
+        b.mesh.lookAt(b.mesh.position.x + 8, b.mesh.position.y, b.mesh.position.z + 1);
+        if (b.wingL) b.wingL.rotation.z = 0.45;
+        if (b.wingR) b.wingR.rotation.z = -0.45;
+      });
+      game.teleport(0, game.groundHeight(0, 4) + 8, 4);
+      game.setYaw(Math.PI);
+      game.camera.rotation.x = 0.38;
       if (game.groundCover) game.groundCover.update(0, game.camera.position);
       game.renderer.render(game.scene, game.camera);
     });
     await page.waitForTimeout(200);
+    await save(`${extraDir}/seagulls.png`);
     await save(`${extraDir}/birds.png`);
     await page.evaluate(() => {
       const p = game.spawn;
@@ -319,15 +360,27 @@ if (extraDir) {
     console.log('wrote', `${extraDir}/hud.png`);
 
     await page.evaluate(() => {
-      const overlay = document.getElementById('overlay');
-      overlay.classList.add('ready');
-      overlay.classList.remove('hidden');
-      document.getElementById('sub').textContent = 'PAUSED';
-      document.getElementById('start').innerHTML = 'CLICK&nbsp;TO&nbsp;RESUME';
+      const hud = document.getElementById('hud');
+      if (hud) hud.style.display = 'none';
+      game.showMenu('land');
+      game.applyMenuCamera(1.4);
+      game.renderer.render(game.scene, game.camera);
     });
-    await page.waitForTimeout(150);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${extraDir}/landing.png`, timeout: 60000 });
+    console.log('wrote', `${extraDir}/landing.png`);
+
+    await page.evaluate(() => {
+      game.showMenu('pause');
+      game.applyMenuCamera(2.1);
+      game.renderer.render(game.scene, game.camera);
+    });
+    await page.waitForTimeout(250);
     await page.screenshot({ path: `${extraDir}/pause_card.png`, timeout: 60000 });
-    await page.evaluate(() => document.getElementById('overlay').classList.add('hidden'));
+    await page.evaluate(() => {
+      document.getElementById('overlay').classList.add('hidden');
+      document.body.classList.add('playing');
+    });
     console.log('wrote', `${extraDir}/pause_card.png`);
 
     await page.evaluate(() => {

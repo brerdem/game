@@ -65,6 +65,25 @@ const extras = await page.evaluate(() => {
     hudFont: getComputedStyle(document.getElementById('score-count')).fontFamily,
     loaderHidden: document.getElementById('loader').classList.contains('hidden'),
     birds: game.counts?.birds || 0,
+    seaGap: (() => {
+      const i2 = game.ISLAND2;
+      const L = Math.hypot(i2.x, i2.z) || 1;
+      const ux = i2.x / L, uz = i2.z / L;
+      let lastLand = 0, firstLand2 = L;
+      for (let s = 80; s < L; s += 1) {
+        const h = game.terrainHeight(ux * s, uz * s);
+        if (h > 0.15) lastLand = s;
+        else break;
+      }
+      for (let s = L; s > 80; s -= 1) {
+        const h = game.terrainHeight(ux * s, uz * s);
+        if (h > 0.15) firstLand2 = s;
+        else break;
+      }
+      return +(firstLand2 - lastLand).toFixed(1);
+    })(),
+    hillA: game.HILL_A ? { ...game.HILL_A, y: +game.terrainHeight(game.HILL_A.x, game.HILL_A.z).toFixed(2) } : null,
+    hillB: game.HILL_B ? { ...game.HILL_B, y: +game.terrainHeight(game.HILL_B.x, game.HILL_B.z).toFixed(2) } : null,
   };
 });
 console.log('extras', JSON.stringify(extras));
@@ -75,6 +94,9 @@ if (!extras.loaderHidden) errors.push('[assert] loader still visible after ready
 if (extras.bridgeMidH != null && extras.bridgeMidH < 3.5) errors.push(`[assert] bridge not high enough ${extras.bridgeMidH}`);
 if (extras.bridgeLen > 200 || extras.bridgeLen < 24) errors.push(`[assert] unexpected bridge span ${extras.bridgeLen}`);
 if (extras.birds < 6) errors.push(`[assert] missing birds ${extras.birds}`);
+if (extras.seaGap < 40 || extras.seaGap > 78) errors.push(`[assert] sea gap not 40–70 m: ${extras.seaGap}`);
+if (extras.hillA && extras.hillA.y < 8) errors.push(`[assert] hill A too low ${extras.hillA.y}`);
+if (extras.hillB && extras.hillB.y < 7) errors.push(`[assert] hill B too low ${extras.hillB.y}`);
 
 const cross = await page.evaluate(() => {
   const b = game.bridge;
@@ -265,6 +287,28 @@ if (extraDir) {
     const lookZ = br.az + (br.bz - br.az) * 0.62;
     await lookAt(lookX, Math.max(br.my, 1.4), lookZ, camX, br.ay + 1.35, camZ, -0.08);
     await save(`${extraDir}/vine_bridge.png`);
+
+    await page.evaluate(() => {
+      const flock = game.birds;
+      const list = flock?.list || [];
+      const bird = list[0] || null;
+      if (bird?.mesh) {
+        const p = bird.mesh.position;
+        p.set(36, 22, -6);
+        bird.vel?.set(6, 0.2, 1.5);
+        game.teleport(18, game.groundHeight(18, 8), 8);
+        game.setYaw(Math.atan2(p.x - 18, p.z - 8) + Math.PI);
+        game.camera.rotation.x = 0.42;
+      } else {
+        const p = game.spawn;
+        game.teleport(p.x, game.groundHeight(p.x, p.z), p.z);
+        game.camera.rotation.x = 0.55;
+      }
+      if (game.groundCover) game.groundCover.update(0, game.camera.position);
+      game.renderer.render(game.scene, game.camera);
+    });
+    await page.waitForTimeout(200);
+    await save(`${extraDir}/birds.png`);
     await page.evaluate(() => {
       const p = game.spawn;
       game.teleport(p.x, game.groundHeight(p.x, p.z), p.z);

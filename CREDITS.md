@@ -18,7 +18,7 @@ Downloaded from [ambientCG](https://ambientcg.com) (CC0 1.0 Universal), compress
 - `public/textures/grass/` — Grass001
 - `public/textures/dirt/` — Ground033
 - `public/textures/rock/` — Rock020
-- `public/textures/sand/` — Ground003 (used as beach sand)
+- `public/textures/sand/` — Ground061 “Lightly Wet Sand”
 
 Water normal map:
 

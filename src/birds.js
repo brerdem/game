@@ -3,9 +3,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { loadManager } from './look.js';
 
 const SPECS = [
-  { url: './models/birds/Flamingo.glb', scale: 0.011, speed: 9.5 },
-  { url: './models/birds/Parrot.glb', scale: 0.015, speed: 12 },
-  { url: './models/birds/Stork.glb', scale: 0.013, speed: 8.5 },
+  { url: './models/birds/Flamingo.glb', scale: 0.085, speed: 9.5 },
+  { url: './models/birds/Parrot.glb', scale: 0.11, speed: 12 },
+  { url: './models/birds/Stork.glb', scale: 0.095, speed: 8.5 },
 ];
 
 export async function createBirds(scene, { rand, count = 8 }) {
@@ -17,7 +17,7 @@ export async function createBirds(scene, { rand, count = 8 }) {
   const look = new THREE.Vector3();
 
   function pickTarget(b) {
-    b.target.set(rand(-90, 260), rand(20, 54), rand(-90, 90));
+    b.target.set(rand(-70, 250), rand(18, 58), rand(-80, 90));
   }
 
   for (let i = 0; i < count; i++) {
@@ -52,6 +52,7 @@ export async function createBirds(scene, { rand, count = 8 }) {
 
   return {
     count: birds.length,
+    list: birds,
     update(dt) {
       for (const m of mixers) m.update(dt);
       for (const b of birds) {

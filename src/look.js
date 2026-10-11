@@ -349,10 +349,10 @@ export function applyTerrainSplat(terrain) {
       vec2 uv2 = vWPos.xz * 0.047 + vec2(17.3, 9.1);
       vec3 grassC = mix(texture2D(tGrass, uv1).rgb, texture2D(tGrass, uv2).rgb, 0.38);
       vec3 dirtC = texture2D(tDirt, uv1 * 0.82).rgb;
-      vec3 sandC = texture2D(tSand, uv1 * 0.68).rgb;
+      vec3 sandC = texture2D(tSand, uv1 * 0.52).rgb * vec3(1.14, 1.04, 0.82);
       vec3 rockC = texture2D(tRock, uv1 * 0.48).rgb;
       float h = vWPos.y;
-      float sandW = 1.0 - smoothstep(0.08, 3.15, h);
+      float sandW = 1.0 - smoothstep(0.0, 4.1, h);
       float rockW = smoothstep(0.88, 0.58, vNy);
       float dirtN = fract(sin(dot(vWPos.xz * 0.07, vec2(12.9898, 78.233))) * 43758.5453);
       dirtN = mix(dirtN, fract(sin(dot(vWPos.xz * 0.021, vec2(91.13, 47.7))) * 23421.6), 0.5);
@@ -364,7 +364,7 @@ export function applyTerrainSplat(terrain) {
       diffuseColor.rgb = col;`
     );
   };
-  mat.customProgramCacheKey = () => 'terrain-splat-v4';
+  mat.customProgramCacheKey = () => 'terrain-splat-v5';
   terrain.material.dispose();
   terrain.material = mat;
   terrain.material.needsUpdate = true;

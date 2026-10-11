@@ -65,9 +65,15 @@ export function createVineBridge(scene, { a, b, sag = 5.2 }) {
         const railY = catenaryY(t, y0, y1, sag) + 1.05;
         const px = a.x + dirx * t * L + sideX * (W * 0.52) * s;
         const pz = a.z + dirz * t * L + sideZ * (W * 0.52) * s;
-        const drop = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.035, 1.05, 5), vine);
-        drop.position.set(px, railY - 0.48, pz);
+        const drop = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.055, 1.12, 5), vine);
+        drop.position.set(px, railY - 0.5, pz);
         hanging.add(drop);
+        if (i % 6 === 0) {
+          const coil = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.03, 5, 8), vine);
+          coil.position.set(px, railY - 0.95, pz);
+          coil.rotation.x = Math.PI / 2;
+          hanging.add(coil);
+        }
       }
     }
   }
@@ -87,10 +93,12 @@ export function createVineBridge(scene, { a, b, sag = 5.2 }) {
     mesh.castShadow = true;
     hanging.add(mesh);
   }
-  cable(-W * 0.52, 0.98, 0.04, rope);
-  cable(W * 0.52, 0.98, 0.04, rope);
-  cable(-W * 0.52, 0.08, 0.035, vine);
-  cable(W * 0.52, 0.08, 0.035, vine);
+  cable(-W * 0.52, 1.02, 0.055, rope);
+  cable(W * 0.52, 1.02, 0.055, rope);
+  cable(-W * 0.52, 0.08, 0.05, vine);
+  cable(W * 0.52, 0.08, 0.05, vine);
+  cable(-W * 0.42, 0.42, 0.028, vine, 22);
+  cable(W * 0.42, 0.42, 0.028, vine, 22);
 
   function post(x, y, z) {
     const p = new THREE.Group();

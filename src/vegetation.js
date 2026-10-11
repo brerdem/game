@@ -31,6 +31,19 @@ function applyWind(material, strength) {
   material.customProgramCacheKey = () => `veg-wind-${strength}`;
 }
 
+function prepareMaterial(material, geometry) {
+  if (geometry.attributes.color) {
+    material.vertexColors = true;
+    if (material.color) material.color.set(0xffffff);
+  } else if (material.color) {
+    const max = Math.max(material.color.r, material.color.g, material.color.b);
+    if (max > 0 && max < 0.32) material.color.multiplyScalar(Math.min(0.58 / max, 4.2));
+  }
+  material.metalness = 0;
+  material.roughness = 0.82;
+  material.side = THREE.DoubleSide;
+}
+
 function isFoliage(mesh) {
   const label = `${mesh.name} ${mesh.parent?.name || ''} ${mesh.material?.name || ''}`.toLowerCase();
   if (/trunk|bark|wood|log|stump/.test(label)) return false;
@@ -51,10 +64,13 @@ export async function loadPrefab(url) {
     geometry.computeBoundingBox();
     box.union(geometry.boundingBox);
     const src = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+    const material = src.clone();
+    const foliage = isFoliage(obj);
+    prepareMaterial(material, geometry);
     parts.push({
       geometry,
-      material: src.clone(),
-      foliage: isFoliage(obj),
+      material,
+      foliage,
       name: obj.name,
     });
   });

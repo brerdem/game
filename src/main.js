@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createNoise2D } from 'simplex-noise';
 import { plantIsland, tickWind } from './vegetation.js';
 
@@ -169,7 +170,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.75;
+renderer.toneMappingExposure = 0.88;
 renderer.domElement.id = 'game';
 document.body.prepend(renderer.domElement);
 
@@ -334,7 +335,8 @@ function addTrunk(x, z, r) {
   trunkGrid.get(k).push(t);
 }
 const occupied = [];
-function scatter(count, { minH = 2.4, maxH = 30, minNy = 0.88, spacing = 0, rampMargin = 2, maxTries = count * 30, clusterNoise = null }) {
+function scatter(count, { minH = 2.4, maxH = 30, minNy = 0.88, spacing = 0, rampMargin = 2, maxTries = count * 30, clusterNoise = null, shareOccupied = true, avoidSpawn = 4 }) {
+  const bag = shareOccupied ? occupied : [];
   const out = [];
   let tries = 0;
   while (out.length < count && tries++ < maxTries) {
@@ -344,13 +346,13 @@ function scatter(count, { minH = 2.4, maxH = 30, minNy = 0.88, spacing = 0, ramp
     if (h < minH || h > maxH) continue;
     if (terrainNormalY(x, z) < minNy) continue;
     if (nearAnyRamp(x, z, rampMargin)) continue;
-    if (Math.hypot(x - spawn.x, z - spawn.z) < (spacing > 0 ? 16 : 4)) continue;
+    if (Math.hypot(x - spawn.x, z - spawn.z) < avoidSpawn) continue;
     if (clusterNoise && noiseB(x / clusterNoise.s, z / clusterNoise.s) < clusterNoise.t) continue;
     if (spacing > 0) {
       let ok = true;
-      for (const o of occupied) { const dx = o.x - x, dz = o.z - z; if (dx * dx + dz * dz < spacing * spacing) { ok = false; break; } }
+      for (const o of bag) { const dx = o.x - x, dz = o.z - z; if (dx * dx + dz * dz < spacing * spacing) { ok = false; break; } }
       if (!ok) continue;
-      occupied.push({ x, z });
+      bag.push({ x, z });
     }
     out.push({ x, y: h, z });
   }
@@ -447,26 +449,50 @@ function hitTrampoline() {
   return null;
 }
 
+function trampolineMatTexture() {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#2f6fff'; ctx.fillRect(0, 0, 256, 256);
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 10;
+  ctx.beginPath(); ctx.arc(128, 128, 108, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.arc(128, 128, 70, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(128, 18); ctx.lineTo(128, 238); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(18, 128); ctx.lineTo(238, 128); ctx.stroke();
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 function makeTrampolineMesh() {
   const g = new THREE.Group();
-  const metal = new THREE.MeshStandardMaterial({ color: 0x3a3d45, roughness: 0.42, metalness: 0.72 });
-  const spring = new THREE.MeshStandardMaterial({ color: 0x8a8f98, roughness: 0.35, metalness: 0.8 });
-  const matMat = new THREE.MeshStandardMaterial({ color: 0x3d8bff, roughness: 0.38, metalness: 0.08, emissive: 0x12306a, emissiveIntensity: 0.28 });
+  const metal = new THREE.MeshStandardMaterial({ color: 0x2b2e34, roughness: 0.4, metalness: 0.78 });
+  const spring = new THREE.MeshStandardMaterial({ color: 0xc5c8ce, roughness: 0.28, metalness: 0.85 });
+  const matMat = new THREE.MeshStandardMaterial({ map: trampolineMatTexture(), roughness: 0.45, metalness: 0.05, emissive: 0x0a2060, emissiveIntensity: 0.22 });
   for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.11, 0.82, 8), metal);
-    leg.position.set(x * 0.98, 0.41, z * 0.98);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 0.62, 8), metal);
+    leg.position.set(x * 1.12, 0.28, z * 1.12);
+    leg.rotation.z = -x * 0.22;
+    leg.rotation.x = z * 0.22;
     g.add(leg);
-    const coil = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.025, 6, 10), spring);
-    coil.position.set(x * 0.92, 0.78, z * 0.92);
-    coil.rotation.x = Math.PI / 2;
+    const foot = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), metal);
+    foot.position.set(x * 1.22, 0.08, z * 1.22);
+    g.add(foot);
+  }
+  for (let i = 0; i < 18; i++) {
+    const a = (i / 18) * Math.PI * 2;
+    const coil = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.2, 6), spring);
+    coil.position.set(Math.cos(a) * 1.2, 0.7, Math.sin(a) * 1.2);
+    coil.rotation.z = Math.cos(a) * 0.9;
+    coil.rotation.x = -Math.sin(a) * 0.9;
     g.add(coil);
   }
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.18, 0.075, 8, 28), metal);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.28, 0.09, 8, 32), metal);
   ring.rotation.x = Math.PI / 2;
-  ring.position.y = 0.84;
+  ring.position.y = 0.72;
   g.add(ring);
-  const pad = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.07, 28), matMat);
-  pad.position.y = 0.84;
+  const pad = new THREE.Mesh(new THREE.CylinderGeometry(1.16, 1.16, 0.05, 32), matMat);
+  pad.position.y = 0.7;
   pad.name = 'mat';
   g.add(pad);
   g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
@@ -474,9 +500,12 @@ function makeTrampolineMesh() {
 }
 
 function diamondGeometry() {
-  const geo = new THREE.OctahedronGeometry(0.38, 0);
-  geo.scale(0.72, 1.18, 0.72);
-  return geo;
+  const a = new THREE.OctahedronGeometry(0.46, 0);
+  a.scale(0.68, 1.22, 0.68);
+  const b = new THREE.OctahedronGeometry(0.46, 0);
+  b.scale(0.68, 1.22, 0.68);
+  b.rotateY(Math.PI / 4);
+  return mergeGeometries([a, b]);
 }
 
 function placeDiamond(x, y, z, { sky = false, points = 100 } = {}) {
@@ -575,7 +604,7 @@ function buildTrampolines() {
     const mat = mesh.getObjectByName('mat');
     trampolines.push({
       x: spot.x, z: spot.z, y: spot.y,
-      padY: spot.y + 0.84 * s,
+      padY: spot.y + 0.7 * s,
       r: 1.15 * s,
       mesh, mat, squash: 0,
     });
@@ -583,7 +612,13 @@ function buildTrampolines() {
 }
 
 function buildDiamonds() {
-  const ground = scatter(40, { minH: 2.4, maxH: 26, minNy: 0.8, spacing: 14, rampMargin: 2.5, maxTries: 40 * 40 });
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + 0.35;
+    const x = spawn.x + Math.cos(a) * 11, z = spawn.z + Math.sin(a) * 11;
+    const h = terrainHeight(x, z);
+    if (h > 1.2) placeDiamond(x, h + 1.35, z, { points: 100 });
+  }
+  const ground = scatter(34, { minH: 2.2, maxH: 26, minNy: 0.78, spacing: 11, rampMargin: 2.2, maxTries: 34 * 50, shareOccupied: false, avoidSpawn: 8 });
   for (const p of ground) placeDiamond(p.x, p.y + 1.25, p.z, { points: 100 });
   for (const rp of ramps) {
     if (rp.PL <= 0) continue;
@@ -595,22 +630,17 @@ function buildDiamonds() {
     const a = rand(0, Math.PI * 2);
     placeDiamond(pad.x + Math.cos(a) * 3.2, pad.padY + 23.5, pad.z + Math.sin(a) * 3.2, { sky: true, points: 250 });
   }
-  const extraHills = scatter(6, { minH: 14, maxH: 30, minNy: 0.82, spacing: 18, rampMargin: 4 });
+  const extraHills = scatter(8, { minH: 12, maxH: 30, minNy: 0.8, spacing: 16, rampMargin: 4, shareOccupied: false, avoidSpawn: 8 });
   for (const p of extraHills) placeDiamond(p.x, p.y + 1.3, p.z, { points: 150 });
 
   diamondMesh = new THREE.InstancedMesh(
     diamondGeometry(),
-    new THREE.MeshPhysicalMaterial({
-      color: 0x7af2ff,
-      emissive: 0x2aa8ff,
-      emissiveIntensity: 0.85,
-      metalness: 0.15,
-      roughness: 0.08,
-      transparent: true,
-      opacity: 0.92,
-      transmission: 0.35,
-      ior: 2.3,
-      reflectivity: 1,
+    new THREE.MeshStandardMaterial({
+      color: 0xc8ffff,
+      emissive: 0x3ad4ff,
+      emissiveIntensity: 1.35,
+      metalness: 0.25,
+      roughness: 0.12,
     }),
     Math.max(diamonds.length, 1)
   );
@@ -813,7 +843,12 @@ window.game = {
 };
 window.game.simulate = (seconds, k = {}) => {
   Object.assign(keys, k);
-  for (let t = 0; t < seconds; t += 1 / 120) updatePlayer(1 / 120);
+  let tAcc = 0;
+  for (let t = 0; t < seconds; t += 1 / 120) {
+    updatePlayer(1 / 120);
+    tAcc += 1 / 120;
+    updateDiamonds(1 / 120, tAcc);
+  }
   for (const c in k) keys[c] = false;
   return player.pos.toArray();
 };

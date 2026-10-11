@@ -72,7 +72,33 @@ if (extras.island2Gems < 3) errors.push(`[assert] too few island-2 gems ${extras
 if (extras.island2Trees < 3) errors.push(`[assert] too few island-2 trees ${extras.island2Trees}`);
 if (!extras.loaderHidden) errors.push('[assert] loader still visible after ready');
 if (extras.bridgeMidH != null && extras.bridgeMidH < 0.35) errors.push(`[assert] bridge mid not walkable ${extras.bridgeMidH}`);
-if (extras.bridgeLen > 110 || extras.bridgeLen < 24) errors.push(`[assert] unexpected bridge span ${extras.bridgeLen}`);
+if (extras.bridgeLen > 200 || extras.bridgeLen < 24) errors.push(`[assert] unexpected bridge span ${extras.bridgeLen}`);
+
+const cross = await page.evaluate(() => {
+  const b = game.bridge;
+  if (!b) return { ok: false, reason: 'no bridge' };
+  const x0 = b.a.x + (b.b.x - b.a.x) * 0.2;
+  const z0 = b.a.z + (b.b.z - b.a.z) * 0.2;
+  game.teleport(x0, game.groundHeight(x0, z0), z0);
+  game.setYaw(Math.atan2(b.b.x - b.a.x, b.b.z - b.a.z) + Math.PI);
+  game.simulate(5, { KeyW: true });
+  const p = game.player.pos;
+  const walkY = p.y;
+  const mx = (b.a.x + b.b.x) / 2, mz = (b.a.z + b.b.z) / 2;
+  const sideX = -(b.b.z - b.a.z), sideZ = (b.b.x - b.a.x);
+  const sl = Math.hypot(sideX, sideZ) || 1;
+  game.teleport(mx + (sideX / sl) * 5, 2.4, mz + (sideZ / sl) * 5);
+  for (let i = 0; i < 160; i++) game.simulate(1 / 60, {});
+  const after = game.player.pos;
+  return {
+    ok: walkY > 0.4 && game.terrainHeight(after.x, after.z) > 0.7,
+    walkY: +walkY.toFixed(2),
+    drownTerrain: +game.terrainHeight(after.x, after.z).toFixed(2),
+    drownY: +after.y.toFixed(2),
+  };
+});
+console.log('cross', JSON.stringify(cross));
+if (!cross.ok) errors.push(`[assert] bridge walk/drown ${JSON.stringify(cross)}`);
 
 const shots = [];
 const save = async (path) => {

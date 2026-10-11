@@ -38,6 +38,8 @@ export function bakeHeightTexture(terrainHeight, WORLD, size = 256) {
     }
   }
   const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.flipY = false;
+  tex.colorSpace = THREE.NoColorSpace;
   tex.needsUpdate = true;
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
   tex.minFilter = THREE.LinearFilter;

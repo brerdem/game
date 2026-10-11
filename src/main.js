@@ -879,6 +879,7 @@ async function boot() {
     quality: LOW ? 'low' : 'high',
   };
   window.game.treePts = vegStats.treePts;
+  window.game.groundCover = groundCover;
   window.game.modelsLoaded = true;
   bootReady = true;
   if (DEBUG) playStarted = true;

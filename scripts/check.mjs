@@ -51,6 +51,7 @@ const shots = [];
 const save = async (path) => {
   mkdirSync(dirname(path), { recursive: true });
   const dataUrl = await page.evaluate(() => {
+    if (game.groundCover) game.groundCover.update(0, game.camera.position);
     game.renderer.render(game.scene, game.camera);
     const canvas = document.getElementById('game');
     if (canvas && canvas.toDataURL) return canvas.toDataURL('image/png');
@@ -72,6 +73,7 @@ async function lookAt(x, y, z, px, py, pz, pitch = -0.12) {
     game.teleport(px, py, pz);
     game.setYaw(Math.atan2(x - px, z - pz) + Math.PI);
     game.camera.rotation.x = pitch;
+    if (game.groundCover) game.groundCover.update(0, game.camera.position);
     game.renderer.render(game.scene, game.camera);
   }, { x, y, z, px, py, pz, pitch });
   await page.waitForTimeout(200);

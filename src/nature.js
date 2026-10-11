@@ -315,6 +315,7 @@ function applyTerrainWrap(mat, { R, heightTex, WORLD, minH = 2.05, wind = 0.12 }
     shader.uniforms.uMinH = { value: minH };
     leafWind.push(shader);
     mat.userData.uCam = shader.uniforms.uCam;
+    if (mat.userData._camSeed) shader.uniforms.uCam.value.copy(mat.userData._camSeed);
     shader.vertexShader = `
       uniform float uTime;
       uniform vec3 uCam;
@@ -373,8 +374,9 @@ export function createGroundCover(scene, { terrainHeight, terrainNormalY, rand, 
     alphaTest: 0.35,
   });
   applyTerrainWrap(grassMat, { R, heightTex, WORLD, minH: 2.05, wind: 0.12 });
+  grassMat.userData._camSeed = new THREE.Vector3(origin.x, 0, origin.z);
   grassMat.transparent = true;
-  grassMat.customProgramCacheKey = () => 'wrap-grass-v4';
+  grassMat.customProgramCacheKey = () => 'wrap-grass-v5';
 
   const grass = new THREE.InstancedMesh(grassGeo, grassMat, grassCount);
   const col = new THREE.Color();
@@ -406,8 +408,9 @@ export function createGroundCover(scene, { terrainHeight, terrainNormalY, rand, 
     alphaTest: 0.3,
   });
   applyTerrainWrap(flMat, { R, heightTex, WORLD, minH: 2.05, wind: 0.04 });
+  flMat.userData._camSeed = new THREE.Vector3(origin.x, 0, origin.z);
   flMat.transparent = true;
-  flMat.customProgramCacheKey = () => 'wrap-flower-v4';
+  flMat.customProgramCacheKey = () => 'wrap-flower-v5';
   const flowers = new THREE.InstancedMesh(flowerGeometry(), flMat, flowerCount);
   const fcol = new THREE.Color();
   const FCOLS = [0xfff4a3, 0xffe9f2, 0xc5b7ff, 0xffffff, 0xffd27a];

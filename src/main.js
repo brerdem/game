@@ -246,24 +246,26 @@ applyTerrainSplat(terrain);
 const heightTex = bakeHeightTexture(terrainHeight, WORLD);
 const ocean = createOcean(scene, sunDir, { heightTex, WORLD, LOW, software });
 
-function findShoreToward(from, to, landMin = 2.7) {
+function findShoreToward(from, to, landMin = 2.6) {
   const dx = to.x - from.x, dz = to.z - from.z;
   const L = Math.hypot(dx, dz) || 1;
   const ux = dx / L, uz = dz / L;
-  let last = { x: from.x, z: from.z, y: terrainHeight(from.x, from.z) };
-  let waterRun = 0;
+  let lastHigh = null;
+  let lastLand = { x: from.x, z: from.z, y: terrainHeight(from.x, from.z) };
+  let seaRun = 0;
   for (let t = 0; t <= L; t += 0.5) {
     const x = from.x + ux * t, z = from.z + uz * t;
     const h = terrainHeight(x, z);
-    if (h >= landMin) {
-      last = { x, z, y: h };
-      waterRun = 0;
-    } else if (last.y >= landMin) {
-      waterRun += 0.5;
-      if (waterRun > 10) return last;
+    if (h >= 0.12) {
+      lastLand = { x, z, y: h };
+      if (h >= landMin) lastHigh = { x, z, y: h };
+      seaRun = 0;
+    } else if (lastLand) {
+      seaRun += 0.5;
+      if (seaRun > 14) return lastHigh || lastLand;
     }
   }
-  return last;
+  return lastHigh || lastLand;
 }
 {
   const aShore = findShoreToward({ x: 0, z: 0 }, ISLAND2, 2.75);

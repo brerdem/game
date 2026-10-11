@@ -27,20 +27,6 @@ page.on('response', (res) => {
 });
 
 await page.goto(url, { waitUntil: 'domcontentloaded' });
-if (extraDir) {
-  mkdirSync(extraDir, { recursive: true });
-  await page.waitForFunction(() => {
-    const el = document.getElementById('loader');
-    const fill = document.getElementById('loader-fill');
-    if (!el || el.classList.contains('hidden')) return false;
-    const w = parseFloat(fill?.style.width || '0');
-    return w >= 4 || (el.querySelector('h1')?.textContent || '').length > 0;
-  }, null, { timeout: 15000 }).catch(() => {});
-  await page.locator('#loader').screenshot({ path: `${extraDir}/loading.png`, timeout: 60000 }).catch(async () => {
-    await page.screenshot({ path: `${extraDir}/loading.png`, timeout: 60000 });
-  });
-  console.log('wrote', `${extraDir}/loading.png`);
-}
 await page.waitForFunction(() => window.__ready === true && window.game?.modelsLoaded === true, null, { timeout: 180000 });
 await page.waitForTimeout(2200);
 
@@ -210,11 +196,11 @@ if (extraDir) {
   if (br) {
     const sideX = -(br.bz - br.az), sideZ = (br.bx - br.ax);
     const sl = Math.hypot(sideX, sideZ) || 1;
-    const camX = br.ax + (br.bx - br.ax) * 0.22 + (sideX / sl) * 11;
-    const camZ = br.az + (br.bz - br.az) * 0.22 + (sideZ / sl) * 11;
-    const lookX = br.ax + (br.bx - br.ax) * 0.55;
-    const lookZ = br.az + (br.bz - br.az) * 0.55;
-    await lookAt(lookX, br.my + 1.2, lookZ, camX, br.ay + 2.4, camZ, -0.12);
+    const camX = br.ax + (br.bx - br.ax) * 0.08 + (sideX / sl) * 6.5;
+    const camZ = br.az + (br.bz - br.az) * 0.08 + (sideZ / sl) * 6.5;
+    const lookX = br.ax + (br.bx - br.ax) * 0.72;
+    const lookZ = br.az + (br.bz - br.az) * 0.72;
+    await lookAt(lookX, Math.max(br.by, 1.2), lookZ, camX, br.ay + 1.6, camZ, -0.06);
     await save(`${extraDir}/vine_bridge.png`);
     await page.evaluate(() => {
       const p = game.spawn;
@@ -226,13 +212,19 @@ if (extraDir) {
     console.log('wrote', `${extraDir}/hud.png`);
 
     await page.evaluate(() => {
+      const canvas = document.getElementById('game');
+      if (canvas) canvas.style.visibility = 'hidden';
       const l = document.getElementById('loader');
       l.classList.remove('hidden');
       document.getElementById('loader-fill').style.width = '58%';
       document.getElementById('loader-pct').textContent = '58%';
     });
-    await page.locator('#loader').screenshot({ path: `${extraDir}/loading.png`, timeout: 60000 });
-    await page.evaluate(() => document.getElementById('loader').classList.add('hidden'));
+    await page.screenshot({ path: `${extraDir}/loading.png`, timeout: 120000 });
+    await page.evaluate(() => {
+      document.getElementById('loader').classList.add('hidden');
+      const canvas = document.getElementById('game');
+      if (canvas) canvas.style.visibility = 'visible';
+    });
     console.log('wrote', `${extraDir}/loading.png`);
 
     const walk = await page.evaluate(({ br }) => {

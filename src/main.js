@@ -172,7 +172,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.12;
+renderer.toneMappingExposure = 0.86;
 renderer.domElement.id = 'game';
 document.body.prepend(renderer.domElement);
 
@@ -182,7 +182,7 @@ camera.layers.enable(1);
 
 // sky + sun + haze
 const sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - 48), THREE.MathUtils.degToRad(150));
-const { env: gemEnv } = createEnvironment(renderer, scene, sunDir);
+const { env: gemEnv, software } = createEnvironment(renderer, scene, sunDir);
 const clouds = createClouds(scene, sunDir);
 
 const hemi = new THREE.HemisphereLight(0xd7e7f6, 0x6a7a48, 1.18);
@@ -217,7 +217,7 @@ scene.add(terrain);
 applyTerrainSplat(terrain);
 
 const heightTex = bakeHeightTexture(terrainHeight, WORLD);
-const ocean = createOcean(scene, sunDir, { heightTex, WORLD, LOW });
+const ocean = createOcean(scene, sunDir, { heightTex, WORLD, LOW, software });
 
 // ---------------------------------------------------------------- ramp meshes
 function plankTexture() {
@@ -441,16 +441,16 @@ function makeTrampolineMesh() {
 }
 
 function diamondGeometry() {
-  const crown = new THREE.ConeGeometry(0.36, 0.26, 8, 1);
-  crown.translate(0, 0.22, 0);
-  const pavilion = new THREE.ConeGeometry(0.36, 0.5, 8, 1);
+  const crown = new THREE.ConeGeometry(0.48, 0.34, 8, 1);
+  crown.translate(0, 0.28, 0);
+  const pavilion = new THREE.ConeGeometry(0.48, 0.66, 8, 1);
   pavilion.rotateX(Math.PI);
-  pavilion.translate(0, -0.16, 0);
-  const girdle = new THREE.CylinderGeometry(0.38, 0.38, 0.055, 8, 1, true);
-  girdle.translate(0, 0.07, 0);
-  const table = new THREE.CircleGeometry(0.14, 8);
+  pavilion.translate(0, -0.2, 0);
+  const girdle = new THREE.CylinderGeometry(0.5, 0.5, 0.07, 8, 1, true);
+  girdle.translate(0, 0.09, 0);
+  const table = new THREE.CircleGeometry(0.18, 8);
   table.rotateX(-Math.PI / 2);
-  table.translate(0, 0.35, 0);
+  table.translate(0, 0.45, 0);
   const geo = mergeGeometries([crown, pavilion, girdle, table], false) || new THREE.OctahedronGeometry(0.46, 0);
   geo.computeVertexNormals();
   return geo;
@@ -605,10 +605,10 @@ function buildDiamonds() {
   for (const p of extraHills) placeDiamond(p.x, p.y + 1.3, p.z, { points: 150 });
 
   const gemMat = new THREE.MeshPhysicalMaterial({
-    color: 0xff1e3c,
-    metalness: 0.08,
-    roughness: 0.045,
-    transmission: 0.78,
+    color: 0xd40028,
+    metalness: 0.12,
+    roughness: 0.06,
+    transmission: software ? 0.08 : 0.58,
     thickness: 0.62,
     ior: 2.42,
     reflectivity: 0.95,
@@ -616,8 +616,8 @@ function buildDiamonds() {
     clearcoatRoughness: 0.03,
     attenuationColor: new THREE.Color(0xff0033),
     attenuationDistance: 0.38,
-    emissive: new THREE.Color(0x7a0014),
-    emissiveIntensity: 0.42,
+    emissive: new THREE.Color(0xc40022),
+    emissiveIntensity: 0.7,
     envMap: gemEnv,
     envMapIntensity: 1.85,
     flatShading: true,
@@ -878,6 +878,7 @@ async function boot() {
     ramps: ramps.length,
     quality: LOW ? 'low' : 'high',
   };
+  window.game.treePts = vegStats.treePts;
   window.game.modelsLoaded = true;
   bootReady = true;
   if (DEBUG) playStarted = true;

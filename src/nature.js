@@ -57,6 +57,9 @@ function keepLeafWind(mat, extra = 0.12) {
   mat.onBeforeCompile = (shader, renderer) => {
     if (prev) prev(shader, renderer);
     if (!shader.uniforms.uTime) shader.uniforms.uTime = { value: 0 };
+    if (!shader.vertexShader.includes('uniform float uTime')) {
+      shader.vertexShader = `uniform float uTime;\n${shader.vertexShader}`;
+    }
     leafWind.push(shader);
     if (extra && !shader.vertexShader.includes('ezExtraSway')) {
       shader.vertexShader = shader.vertexShader.replace(
@@ -97,6 +100,7 @@ function toStandardLeaf(src) {
     alphaTest: Math.max(old.alphaTest || 0, 0.42),
   });
   keepLeafWind(mat, 0.2);
+  mat.customProgramCacheKey = () => 'ez-leaf-wind-std';
   return mat;
 }
 
@@ -225,6 +229,10 @@ function makeTree(preset, seed, { LOW = false, leaves } = {}) {
       tree.options.branch.sections[k] = Math.max(3, Math.round(tree.options.branch.sections[k] * 0.65));
     }
   }
+  if (tree.options.leaves) {
+    tree.options.leaves.size = (tree.options.leaves.size || 2.4) * 1.35;
+    tree.options.leaves.count = Math.min(28, Math.round((tree.options.leaves.count || 12) * 1.25));
+  }
   if (leaves) Object.assign(tree.options.leaves, leaves);
   tree.generate();
   return tree;
@@ -232,11 +240,11 @@ function makeTree(preset, seed, { LOW = false, leaves } = {}) {
 
 export function plantTrees(scene, { scatter, addTrunk, rand, renderer, LOW }) {
   const specs = [
-    { preset: 'Oak Medium', count: LOW ? 12 : 24, minH: 3.0, maxH: 18, spacing: 13, h: 12.5 },
-    { preset: 'Oak Small', count: LOW ? 10 : 18, minH: 2.6, maxH: 16, spacing: 10, h: 8.2 },
-    { preset: 'Ash Medium', count: LOW ? 10 : 20, minH: 3.0, maxH: 17, spacing: 12, h: 11.5 },
-    { preset: 'Aspen Medium', count: LOW ? 8 : 16, minH: 3.4, maxH: 20, spacing: 13, h: 13.2 },
-    { preset: 'Pine Medium', count: LOW ? 12 : 22, minH: 6.5, maxH: 32, spacing: 11, h: 16.5 },
+    { preset: 'Oak Medium', count: LOW ? 12 : 24, minH: 3.0, maxH: 18, spacing: 13, h: 16.5 },
+    { preset: 'Oak Small', count: LOW ? 10 : 18, minH: 2.6, maxH: 16, spacing: 10, h: 10.5 },
+    { preset: 'Ash Medium', count: LOW ? 10 : 20, minH: 3.0, maxH: 17, spacing: 12, h: 14.5 },
+    { preset: 'Aspen Medium', count: LOW ? 8 : 16, minH: 3.4, maxH: 20, spacing: 13, h: 16.0 },
+    { preset: 'Pine Medium', count: LOW ? 12 : 22, minH: 6.5, maxH: 32, spacing: 11, h: 20.0 },
   ];
   let trees = 0;
   const treePts = [];

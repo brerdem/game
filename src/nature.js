@@ -381,10 +381,8 @@ function applyTerrainWrap(mat, { R, heightTex, WORLD, minH = 2.05, wind = 0.12 }
       ${shader.vertexShader}`
       .replace(
         '#include <project_vertex>',
-        `{
-          vec4 mvPosition = modelViewMatrix * vec4(wrapGrassWorld(transformed), 1.0);
-          gl_Position = projectionMatrix * mvPosition;
-        }`
+        `vec4 mvPosition = modelViewMatrix * vec4(wrapGrassWorld(transformed), 1.0);
+        gl_Position = projectionMatrix * mvPosition;`
       )
       .replace(
         '#include <worldpos_vertex>',

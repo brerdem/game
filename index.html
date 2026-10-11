@@ -39,14 +39,14 @@
     border: 1px solid rgba(255,255,255,0.14);
     box-shadow: 0 18px 56px rgba(0,0,0,0.5);
   }
-  #panel h1, #panel p, #panel table, #start {
+  #panel h1, #panel p, #panel table, #panel td, #start {
     font-family: 'Luckiest Guy', system-ui, sans-serif;
-    text-transform: uppercase;
+    font-feature-settings: "liga" 0, "clig" 0, "calt" 0;
   }
-  #panel h1 { margin: 0 0 10px; font-size: clamp(56px, 8.5vw, 84px); letter-spacing: 0.06em; }
-  #panel p { margin: 8px 0 22px; color: #fff; font-size: clamp(22px, 3vw, 28px); letter-spacing: 0.05em; }
+  #panel h1 { margin: 0 0 10px; font-size: clamp(56px, 8.5vw, 84px); letter-spacing: 0.08em; }
+  #panel p { margin: 8px 0 22px; color: #fff; font-size: clamp(22px, 3vw, 28px); letter-spacing: 0.08em; word-spacing: 0.22em; }
   #panel table { margin: 0 auto 26px; border-collapse: collapse; text-align: left; font-size: clamp(20px, 2.6vw, 26px); }
-  #panel td { padding: 10px 16px; color: #fff; letter-spacing: 0.04em; }
+  #panel td { padding: 10px 16px; color: #fff; letter-spacing: 0.08em; word-spacing: 0.22em; }
   kbd {
     background: #111;
     border: 1px solid #444;
@@ -57,8 +57,7 @@
     font-family: 'Luckiest Guy', system-ui, sans-serif;
     font-size: 18px;
     color: #fff;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
   #start { display: inline-block; background: #1f7a46; color: #fff; padding: 16px 36px; border-radius: 12px; font-size: clamp(22px, 3vw, 28px); letter-spacing: 0.05em; }
   #crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255,255,255,0.85); box-shadow: 0 0 2px rgba(0,0,0,0.8); pointer-events: none; z-index: 5; }
@@ -99,16 +98,16 @@
   </div>
   <div id="overlay">
     <div id="panel">
-      <h1>Island</h1>
-      <p id="sub">Collect every ruby. Climb the hill and cross the vine bridge.</p>
+      <h1>ISLAND</h1>
+      <p id="sub">COLLECT EVERY RUBY</p>
       <table>
-        <tr><td><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></td><td>Move</td></tr>
-        <tr><td><kbd>Mouse</kbd></td><td>Look around</td></tr>
-        <tr><td><kbd>Shift</kbd></td><td>Sprint</td></tr>
-        <tr><td><kbd>Space</kbd></td><td>Jump</td></tr>
-        <tr><td><kbd>Esc</kbd></td><td>Pause / release mouse</td></tr>
+        <tr><td><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></td><td>MOVE</td></tr>
+        <tr><td><kbd>MOUSE</kbd></td><td>LOOK&nbsp;AROUND</td></tr>
+        <tr><td><kbd>SHIFT</kbd></td><td>SPRINT</td></tr>
+        <tr><td><kbd>SPACE</kbd></td><td>JUMP</td></tr>
+        <tr><td><kbd>ESC</kbd></td><td>PAUSE&nbsp;/&nbsp;RELEASE&nbsp;MOUSE</td></tr>
       </table>
-      <div id="start">Click to play</div>
+      <div id="start">CLICK&nbsp;TO&nbsp;PLAY</div>
     </div>
   </div>
   <div id="crosshair"></div>

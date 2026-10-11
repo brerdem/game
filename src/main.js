@@ -464,8 +464,8 @@ controls.addEventListener('lock', () => {
 controls.addEventListener('unlock', () => {
   if (won) return;
   overlay.classList.remove('hidden');
-  document.getElementById('sub').textContent = 'Paused';
-  document.getElementById('start').textContent = 'Click to resume';
+  document.getElementById('sub').textContent = 'PAUSED';
+  document.getElementById('start').textContent = 'CLICK TO RESUME';
 });
 if (DEBUG) overlay.classList.add('hidden');
 

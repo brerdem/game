@@ -322,8 +322,8 @@ if (extraDir) {
       const overlay = document.getElementById('overlay');
       overlay.classList.add('ready');
       overlay.classList.remove('hidden');
-      document.getElementById('sub').textContent = 'Paused';
-      document.getElementById('start').textContent = 'Click to resume';
+      document.getElementById('sub').textContent = 'PAUSED';
+      document.getElementById('start').innerHTML = 'CLICK&nbsp;TO&nbsp;RESUME';
     });
     await page.waitForTimeout(150);
     await page.screenshot({ path: `${extraDir}/pause_card.png`, timeout: 60000 });

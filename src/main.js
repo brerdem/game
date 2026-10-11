@@ -3,7 +3,7 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createNoise2D } from 'simplex-noise';
 import { applyTerrainSplat, bakeHeightTexture, createClouds, createEnvironment, createOcean, loadManager } from './look.js';
-import { createGroundCover, plantTrees, tickNature } from './nature.js';
+import { createGroundCover, plantTrees } from './nature.js';
 import { createVineBridge } from './bridge.js';
 import { createBirds } from './birds.js';
 
@@ -961,7 +961,6 @@ function frame() {
   }
   updateDiamonds(dt, clock.elapsedTime);
   updateTrampolines(dt);
-  tickNature(clock.elapsedTime);
   clouds.update(clock.elapsedTime, camera);
   ocean.update(clock.elapsedTime, sunDir);
   if (bridge) bridge.update(clock.elapsedTime);
@@ -1052,6 +1051,7 @@ async function boot() {
     bushes: vegStats.bushes,
     grass: vegStats.grass,
     flowers: vegStats.flowers,
+    grassRadius: groundCover.radius,
     models: vegStats.trees,
     diamonds: diamonds.length,
     trampolines: trampolines.length,

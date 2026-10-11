@@ -46,6 +46,10 @@ console.log(JSON.stringify(info, null, 2));
 if (!info.counts?.trees || info.counts.trees < 20 || info.counts.diamonds < 20 || info.counts.trampolines < 3 || !info.counts.grass) {
   errors.push(`[assert] unexpected counts ${JSON.stringify(info.counts)}`);
 }
+if (info.counts?.quality === 'high') {
+  if (info.counts.grass !== 24000) errors.push(`[assert] grass count ${info.counts.grass} expected 24000`);
+  if (info.counts.grassRadius !== 20) errors.push(`[assert] grass radius ${info.counts.grassRadius} expected 20`);
+}
 const extras = await page.evaluate(() => {
   const i2 = game.ISLAND2 || { x: 298, z: 32, r: 78 };
   const gems = (game.diamonds || []).filter((d) => Math.hypot(d.x - i2.x, d.z - i2.z) < i2.r + 6);

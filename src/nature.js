@@ -3,7 +3,6 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Tree } from '@dgreenheck/ez-tree';
 
 const dummy = new THREE.Object3D();
-const leafWind = [];
 
 function canvasTex(w, h, draw) {
   const c = document.createElement('canvas');
@@ -49,31 +48,10 @@ function flowerTexture() {
   });
 }
 
-function keepLeafWind(mat, extra = 0.12) {
+function keepLeafOpaque(mat) {
   mat.alphaTest = Math.max(mat.alphaTest || 0, 0.42);
   mat.transparent = false;
   mat.side = THREE.DoubleSide;
-  const prev = mat.onBeforeCompile;
-  mat.onBeforeCompile = (shader, renderer) => {
-    if (prev) prev(shader, renderer);
-    if (!shader.uniforms.uTime) shader.uniforms.uTime = { value: 0 };
-    if (!shader.vertexShader.includes('uniform float uTime')) {
-      shader.vertexShader = `uniform float uTime;\n${shader.vertexShader}`;
-    }
-    leafWind.push(shader);
-    if (extra && !shader.vertexShader.includes('ezExtraSway')) {
-      shader.vertexShader = shader.vertexShader.replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
-        // ezExtraSway
-        #ifdef USE_INSTANCING
-        float phase = instanceMatrix[3].x * 0.19 + instanceMatrix[3].z * 0.15;
-        transformed.x += sin(uTime * 1.15 + phase) * ${extra.toFixed(3)} * uv.y;
-        transformed.z += cos(uTime * 0.95 + phase * 1.2) * ${(extra * 0.7).toFixed(3)} * uv.y;
-        #endif`
-      );
-    }
-  };
 }
 
 function toStandardBark(src) {
@@ -99,8 +77,8 @@ function toStandardLeaf(src) {
     side: THREE.DoubleSide,
     alphaTest: Math.max(old.alphaTest || 0, 0.42),
   });
-  keepLeafWind(mat, 0.2);
-  mat.customProgramCacheKey = () => 'ez-leaf-wind-std';
+  keepLeafOpaque(mat);
+  mat.customProgramCacheKey = () => 'ez-leaf-static';
   return mat;
 }
 
@@ -328,28 +306,6 @@ function flowerGeometry() {
   return mergeGeometries([a, b]);
 }
 
-function applyBladeWind(mat, wind = 0.08) {
-  mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = { value: 0 };
-    leafWind.push(shader);
-    if (!shader.vertexShader.includes('uniform float uTime')) {
-      shader.vertexShader = `uniform float uTime;\n${shader.vertexShader}`;
-    }
-    if (!shader.vertexShader.includes('bladeWindSway')) {
-      shader.vertexShader = shader.vertexShader.replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
-        // bladeWindSway — local sway only; world XZ/Y come from the instance matrix
-        #ifdef USE_INSTANCING
-        float phase = instanceMatrix[3].x * 0.4 + instanceMatrix[3].z * 0.33;
-        transformed.x += sin(uTime * 2.05 + phase) * ${wind.toFixed(3)} * transformed.y;
-        transformed.z += cos(uTime * 1.65 + phase) * ${(wind * 0.75).toFixed(3)} * transformed.y;
-        #endif`
-      );
-    }
-  };
-}
-
 function wrap1(v, c, R) {
   let rel = v - c;
   rel -= (2 * R) * Math.floor((rel + R) / (2 * R));
@@ -357,9 +313,9 @@ function wrap1(v, c, R) {
 }
 
 export function createGroundCover(scene, { terrainHeight, terrainNormalY, rand, LOW, spawn }) {
-  const grassCount = LOW ? 22000 : 48000;
-  const flowerCount = LOW ? 280 : 620;
-  const R = LOW ? 22 : 28;
+  const grassCount = LOW ? 11000 : 24000;
+  const flowerCount = LOW ? 140 : 310;
+  const R = LOW ? 16 : 20;
   const origin = spawn || { x: 0, z: 0 };
   const minH = 2.05;
 
@@ -376,8 +332,7 @@ export function createGroundCover(scene, { terrainHeight, terrainNormalY, rand, 
     side: THREE.DoubleSide,
     alphaTest: 0.4,
   });
-  applyBladeWind(grassMat, 0.08);
-  grassMat.customProgramCacheKey = () => 'cpu-grass-v1';
+  grassMat.customProgramCacheKey = () => 'cpu-grass-static';
 
   const grass = new THREE.InstancedMesh(grassGeo, grassMat, grassCount);
   const gMeta = new Array(grassCount);
@@ -410,8 +365,7 @@ export function createGroundCover(scene, { terrainHeight, terrainNormalY, rand, 
     side: THREE.DoubleSide,
     alphaTest: 0.35,
   });
-  applyBladeWind(flMat, 0.03);
-  flMat.customProgramCacheKey = () => 'cpu-flower-v1';
+  flMat.customProgramCacheKey = () => 'cpu-flower-static';
   const flowers = new THREE.InstancedMesh(flowerGeometry(), flMat, flowerCount);
   const fMeta = new Array(flowerCount);
   const fcol = new THREE.Color();
@@ -469,13 +423,10 @@ export function createGroundCover(scene, { terrainHeight, terrainNormalY, rand, 
   return {
     grass: grassCount,
     flowers: flowerCount,
+    radius: R,
     update(_time, cam) {
       const cx = cam.x ?? 0, cz = cam.z ?? 0;
       if ((cx - lastCX) * (cx - lastCX) + (cz - lastCZ) * (cz - lastCZ) > 1.6 * 1.6) placeAll(cam);
     },
   };
-}
-
-export function tickNature(time) {
-  for (const s of leafWind) if (s.uniforms.uTime) s.uniforms.uTime.value = time;
 }

@@ -46,11 +46,11 @@ const SEG = 320;            // terrain segments
 const CELL = WORLD / SEG;
 const HALF = WORLD / 2;
 const ISLAND_R = 160;
-const ISLAND2 = { x: 276, z: 18, r: 54 };
+const ISLAND2 = { x: 240, z: 14, r: 50 };
 const gapLen = Math.hypot(ISLAND2.x, ISLAND2.z) || 1;
 const gapU = { x: ISLAND2.x / gapLen, z: ISLAND2.z / gapLen };
-const HILL_A = { x: gapU.x * 142, z: gapU.z * 142, h: 20, r: 24 };
-const HILL_B = { x: ISLAND2.x - gapU.x * 34, z: ISLAND2.z - gapU.z * 34, h: 16, r: 20 };
+const HILL_A = { x: gapU.x * 144, z: gapU.z * 144, h: 17, r: 20 };
+const HILL_B = { x: ISLAND2.x - gapU.x * 26, z: ISLAND2.z - gapU.z * 26, h: 14, r: 16 };
 const EYE = 1.7;
 
 // ---------------------------------------------------------------- terrain function
@@ -83,7 +83,7 @@ function rawHeight(x, z) {
   const ha = hillFalloff(x, z, HILL_A);
   const hb = hillFalloff(x, z, HILL_B);
   // Facing-shore hills keep their own land so the tops stay above water.
-  const mask = Math.max(m1, m2, ha * 0.88, hb * 0.88);
+  const mask = Math.max(m1, m2, ha * 0.82, hb * 0.82);
   const e = fbm(x / 170, z / 170, 4);
   let h = m1 * (10 + 6 * e) + m2 * (7.5 + 4.5 * e) - 5;
   h += ha * HILL_A.h + hb * HILL_B.h;
@@ -405,6 +405,8 @@ let score = 0, collected = 0, playStarted = false, elapsed = 0, won = false, boo
   if (params.has('yaw')) camera.rotation.y = parseFloat(params.get('yaw'));
   if (params.has('pitch')) camera.rotation.x = parseFloat(params.get('pitch'));
 }
+const playYaw = camera.rotation.y;
+const playPitch = camera.rotation.x;
 const keys = {};
 addEventListener('keydown', (e) => { keys[e.code] = true; if (e.code === 'Space') e.preventDefault(); });
 addEventListener('keyup', (e) => { keys[e.code] = false; });
@@ -451,23 +453,61 @@ function resetRun() {
   refreshHud();
   controls.lock();
 }
-overlay.addEventListener('click', () => {
+let menuOpen = !DEBUG;
+function showMenu(mode) {
+  menuOpen = true;
+  overlay.classList.add('ready');
+  overlay.classList.remove('hidden');
+  document.getElementById('panel').classList.remove('hidden');
+  document.getElementById('thanks').classList.remove('show');
+  document.getElementById('sub').textContent = mode === 'pause' ? 'PAUSED' : 'COLLECT EVERY RUBY';
+  document.getElementById('start').textContent = mode === 'pause' ? 'RESUME' : 'PLAY';
+  document.body.classList.remove('playing');
+}
+function applyMenuCamera(time) {
+  const mx = (HILL_A.x + HILL_B.x) * 0.5;
+  const mz = (HILL_A.z + HILL_B.z) * 0.5;
+  const ang = time * 0.075;
+  camera.position.set(mx + Math.cos(ang) * 48, 21, mz + Math.sin(ang) * 34);
+  camera.up.set(0, 1, 0);
+  camera.lookAt(mx, 11.5, mz);
+}
+function exitGame(e) {
+  e?.stopPropagation?.();
+  e?.preventDefault?.();
+  window.close();
+  setTimeout(() => {
+    document.getElementById('panel').classList.add('hidden');
+    document.getElementById('thanks').classList.add('show');
+    overlay.classList.add('ready');
+    overlay.classList.remove('hidden');
+  }, 300);
+}
+document.getElementById('start').addEventListener('click', (e) => {
+  e.stopPropagation();
   if (!bootReady || won) return;
   controls.lock();
 });
+document.getElementById('exit').addEventListener('click', exitGame);
 document.getElementById('again').addEventListener('click', (e) => { e.stopPropagation(); resetRun(); });
 winEl.addEventListener('click', resetRun);
 controls.addEventListener('lock', () => {
+  menuOpen = false;
   overlay.classList.add('hidden');
+  document.body.classList.add('playing');
+  camera.up.set(0, 1, 0);
+  camera.rotation.set(playPitch, playYaw, 0, 'YXZ');
   if (!playStarted) playStarted = true;
 });
 controls.addEventListener('unlock', () => {
   if (won) return;
-  overlay.classList.remove('hidden');
-  document.getElementById('sub').textContent = 'PAUSED';
-  document.getElementById('start').textContent = 'CLICK TO RESUME';
+  showMenu('pause');
 });
-if (DEBUG) overlay.classList.add('hidden');
+if (DEBUG) {
+  overlay.classList.add('hidden');
+  document.body.classList.add('playing');
+  menuOpen = false;
+}
 
 function hitTrampoline() {
   for (const pad of trampolines) {
@@ -914,8 +954,11 @@ function frame() {
   const rawDt = clock.getDelta();
   const dt = Math.min(rawDt, 0.05);
   if (playStarted && !won && (controls.isLocked || DEBUG)) elapsed += dt;
-  // two substeps for stable collisions at sprint speed
-  updatePlayer(dt / 2); updatePlayer(dt / 2);
+  if (menuOpen) {
+    applyMenuCamera(clock.elapsedTime);
+  } else {
+    updatePlayer(dt / 2); updatePlayer(dt / 2);
+  }
   updateDiamonds(dt, clock.elapsedTime);
   updateTrampolines(dt);
   tickNature(clock.elapsedTime);
@@ -954,7 +997,7 @@ addEventListener('resize', () => {
 // small hook for automated tests / debugging
 window.game = {
   keys, get fps() { return fps; }, player, camera, ramps, spawn, groundHeight, terrainHeight, renderer, scene,
-  diamonds, trampolines, bridge, ISLAND2,
+  diamonds, trampolines, bridge, ISLAND2, ocean,
   get score() { return score; }, get collected() { return collected; }, get elapsed() { return elapsed; },
   counts: { ramps: ramps.length },
 };
@@ -998,9 +1041,9 @@ async function boot() {
   buildDiamonds();
   setLoad(0.96);
   try {
-    birds = await createBirds(scene, { rand, count: LOW ? 6 : 8 });
+    birds = createBirds(scene, { rand, count: LOW ? 6 : 8 });
   } catch (err) {
-    console.warn('birds failed to load', err);
+    console.warn('birds failed', err);
     birds = { count: 0, update() {} };
   }
   setLoad(1);
@@ -1023,6 +1066,9 @@ async function boot() {
   window.game.birds = birds;
   window.game.HILL_A = HILL_A;
   window.game.HILL_B = HILL_B;
+  window.game.showMenu = showMenu;
+  window.game.exitGame = exitGame;
+  window.game.applyMenuCamera = applyMenuCamera;
   window.game.modelsLoaded = true;
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   if (loaderEl) loaderEl.classList.add('hidden');

@@ -26,7 +26,7 @@ Water normal map:
 
 ## Birds
 
-Animated `Flamingo.glb`, `Parrot.glb`, and `Stork.glb` from the [three.js r170 examples](https://github.com/mrdoob/three.js/tree/r170/examples/models/gltf) (MIT), vendored in `public/models/birds/`.
+Low-poly seagulls are built in `src/birds.js` from basic Three.js geometry (white body, grey wings with dark tips, yellow beak) with rotation-based flap and glide.
 
 ## Fonts
 

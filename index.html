@@ -16,7 +16,7 @@
   canvas#game { display: block; visibility: hidden; }
   body.booted canvas#game { visibility: visible; }
   #minimap, #game-hud, #crosshair { opacity: 0; }
-  body.booted #minimap, body.booted #game-hud, body.booted #crosshair { opacity: 1; }
+  body.playing #minimap, body.playing #game-hud, body.playing #crosshair { opacity: 1; }
   #loader { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(180deg, #5b9bd4 0%, #87b8d8 55%, #c5d8ea 100%); z-index: 20; color: #fff; }
   #loader.hidden { display: none; }
   #loader h1 { font-family: 'Luckiest Guy', system-ui, sans-serif; font-size: clamp(48px, 9vw, 86px); margin: 0 0 10px; letter-spacing: 0.04em; text-shadow: 0 3px 0 #1b3d5c, 0 8px 18px rgba(0,0,0,0.28); }
@@ -24,29 +24,34 @@
   #loader-bar { width: min(420px, 70vw); height: 18px; background: rgba(255,255,255,0.28); border: 3px solid #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,0.2); }
   #loader-fill { height: 100%; width: 0; background: linear-gradient(90deg, #2b7a4b, #5ad07a); transition: width 0.18s ease; }
   #loader-pct { margin-top: 10px; font-family: 'Luckiest Guy', system-ui, sans-serif; font-size: 22px; text-shadow: 0 2px 0 #1b3d5c; }
-  #overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.38); cursor: pointer; z-index: 10; }
+  #overlay {
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    background: linear-gradient(180deg, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.22) 42%, rgba(0,0,0,0.7) 100%);
+    cursor: default; z-index: 10;
+  }
   #overlay.ready { display: flex; }
   #overlay.hidden { display: none; }
   #panel {
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.55);
     color: #fff;
-    padding: 44px 56px 40px;
-    border-radius: 22px;
-    max-width: 680px;
+    padding: 46px 58px 42px;
+    border-radius: 24px;
+    max-width: 720px;
     text-align: center;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     border: 1px solid rgba(255,255,255,0.14);
     box-shadow: 0 18px 56px rgba(0,0,0,0.5);
   }
-  #panel h1, #panel p, #panel table, #panel td, #start {
+  #panel.hidden { display: none; }
+  #panel h1, #panel p, #panel table, #panel td, #start, #exit, #thanks h1, #thanks p {
     font-family: 'Luckiest Guy', system-ui, sans-serif;
     font-feature-settings: "liga" 0, "clig" 0, "calt" 0;
   }
-  #panel h1 { margin: 0 0 10px; font-size: clamp(56px, 8.5vw, 84px); letter-spacing: 0.08em; }
-  #panel p { margin: 8px 0 22px; color: #fff; font-size: clamp(22px, 3vw, 28px); letter-spacing: 0.08em; word-spacing: 0.22em; }
-  #panel table { margin: 0 auto 26px; border-collapse: collapse; text-align: left; font-size: clamp(20px, 2.6vw, 26px); }
-  #panel td { padding: 10px 16px; color: #fff; letter-spacing: 0.08em; word-spacing: 0.22em; }
+  #panel h1 { margin: 0 0 10px; font-size: clamp(60px, 9vw, 92px); letter-spacing: 0.08em; }
+  #panel p { margin: 8px 0 24px; color: #fff; font-size: clamp(20px, 2.8vw, 26px); letter-spacing: 0.08em; word-spacing: 0.22em; }
+  #panel table { margin: 0 auto 28px; border-collapse: collapse; text-align: left; font-size: clamp(18px, 2.4vw, 24px); }
+  #panel td { padding: 8px 16px; color: #fff; letter-spacing: 0.08em; word-spacing: 0.22em; }
   kbd {
     background: #111;
     border: 1px solid #444;
@@ -55,11 +60,29 @@
     border-radius: 8px;
     padding: 5px 12px;
     font-family: 'Luckiest Guy', system-ui, sans-serif;
-    font-size: 18px;
+    font-size: 17px;
     color: #fff;
     letter-spacing: 0.04em;
   }
-  #start { display: inline-block; background: #1f7a46; color: #fff; padding: 16px 36px; border-radius: 12px; font-size: clamp(22px, 3vw, 28px); letter-spacing: 0.05em; }
+  .actions { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  #start {
+    display: inline-block; background: #1f7a46; color: #fff; padding: 18px 56px;
+    border: 0; border-radius: 14px; font-size: clamp(28px, 4vw, 38px); letter-spacing: 0.08em; cursor: pointer;
+  }
+  #exit {
+    display: inline-block; background: transparent; color: #fff; padding: 10px 28px;
+    border: 2px solid rgba(255,255,255,0.45); border-radius: 12px;
+    font-size: clamp(18px, 2.4vw, 22px); letter-spacing: 0.06em; cursor: pointer;
+  }
+  #start:hover { background: #259154; }
+  #exit:hover { background: rgba(255,255,255,0.1); }
+  #thanks {
+    display: none; text-align: center; color: #fff;
+    background: rgba(0,0,0,0.72); padding: 48px 56px; border-radius: 22px;
+  }
+  #thanks.show { display: block; }
+  #thanks h1 { font-size: clamp(36px, 6vw, 56px); letter-spacing: 0.06em; margin: 0 0 12px; }
+  #thanks p { font-size: 22px; letter-spacing: 0.04em; }
   #crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255,255,255,0.85); box-shadow: 0 0 2px rgba(0,0,0,0.8); pointer-events: none; z-index: 5; }
   #minimap { position: fixed; right: 16px; bottom: 16px; width: min(220px, 34vmin); height: min(220px, 34vmin); border-radius: 50%; border: 3px solid rgba(255,255,255,0.85); box-shadow: 0 4px 18px rgba(0,0,0,0.4); z-index: 6; pointer-events: none; }
   #hud { position: fixed; left: 12px; top: 10px; color: #fff; font-size: 12px; text-shadow: 0 1px 2px rgba(0,0,0,0.8); z-index: 6; pointer-events: none; white-space: pre; }
@@ -97,6 +120,10 @@
     <div id="loader-pct">0%</div>
   </div>
   <div id="overlay">
+    <div id="thanks">
+      <h1>THANKS FOR PLAYING</h1>
+      <p>YOU CAN CLOSE THIS TAB</p>
+    </div>
     <div id="panel">
       <h1>ISLAND</h1>
       <p id="sub">COLLECT EVERY RUBY</p>
@@ -105,9 +132,12 @@
         <tr><td><kbd>MOUSE</kbd></td><td>LOOK&nbsp;AROUND</td></tr>
         <tr><td><kbd>SHIFT</kbd></td><td>SPRINT</td></tr>
         <tr><td><kbd>SPACE</kbd></td><td>JUMP</td></tr>
-        <tr><td><kbd>ESC</kbd></td><td>PAUSE&nbsp;/&nbsp;RELEASE&nbsp;MOUSE</td></tr>
+        <tr><td><kbd>ESC</kbd></td><td>PAUSE</td></tr>
       </table>
-      <div id="start">CLICK&nbsp;TO&nbsp;PLAY</div>
+      <div class="actions">
+        <button type="button" id="start">PLAY</button>
+        <button type="button" id="exit">EXIT GAME</button>
+      </div>
     </div>
   </div>
   <div id="crosshair"></div>

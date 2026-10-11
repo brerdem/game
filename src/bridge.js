@@ -42,9 +42,9 @@ export function createVineBridge(scene, { a, b, sag = 5.2 }) {
 
   const group = new THREE.Group();
   group.name = 'vine-bridge';
-  const hanging = new THREE.Group();
-  hanging.name = 'bridge-hang';
-  group.add(hanging);
+  // Planks live on the static group — no hanging child, no time-based offset.
+  // The old sine sway on a 'bridge-hang' child is what made the deck bob
+  // like the Water.js wave clock.
 
   const plankGeo = new THREE.BoxGeometry(W, 0.09, 0.52);
   for (let i = 0; i < plankN; i++) {
@@ -58,7 +58,8 @@ export function createVineBridge(scene, { a, b, sag = 5.2 }) {
     ) * 0.55;
     plank.castShadow = true;
     plank.receiveShadow = true;
-    hanging.add(plank);
+    if (Math.abs(t - 0.5) < 1 / plankN) plank.name = 'bridge-mid-plank';
+    group.add(plank);
 
     if (i % 2 === 0) {
       for (const s of [-1, 1]) {
@@ -67,12 +68,12 @@ export function createVineBridge(scene, { a, b, sag = 5.2 }) {
         const pz = a.z + dirz * t * L + sideZ * (W * 0.52) * s;
         const drop = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.055, 1.12, 5), vine);
         drop.position.set(px, railY - 0.5, pz);
-        hanging.add(drop);
+        group.add(drop);
         if (i % 6 === 0) {
           const coil = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.03, 5, 8), vine);
           coil.position.set(px, railY - 0.95, pz);
           coil.rotation.x = Math.PI / 2;
-          hanging.add(coil);
+          group.add(coil);
         }
       }
     }
@@ -91,7 +92,7 @@ export function createVineBridge(scene, { a, b, sag = 5.2 }) {
     const curve = new THREE.CatmullRomCurve3(pts);
     const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, segs, radius, 5, false), mat);
     mesh.castShadow = true;
-    hanging.add(mesh);
+    group.add(mesh);
   }
   cable(-W * 0.52, 1.02, 0.055, rope);
   cable(W * 0.52, 1.02, 0.055, rope);
@@ -128,12 +129,19 @@ export function createVineBridge(scene, { a, b, sag = 5.2 }) {
     return catenaryY(t, y0, y1, sag);
   }
 
+  const _mid = new THREE.Vector3();
   return {
     a, b, L,
+    group,
     surface,
-    update(time) {
-      hanging.position.y = Math.sin(time * 1.15) * 0.045;
-      hanging.rotation.z = Math.sin(time * 0.85) * 0.006;
+    midWorldY() {
+      group.updateMatrixWorld(true);
+      const mid = group.getObjectByName('bridge-mid-plank');
+      if (mid) return mid.getWorldPosition(_mid).y;
+      return catenaryY(0.5, y0, y1, sag);
+    },
+    update() {
+      // Intentionally static: no sway, no water-clock coupling.
     },
   };
 }

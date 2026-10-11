@@ -171,6 +171,29 @@ if (extraDir) {
   });
   await lookAt(shore.lookX, 0.2, shore.lookZ, shore.x - 2, Math.max(shore.y, 1.2), shore.z - 6, -0.08);
   await save(`${extraDir}/sea_and_shore.png`);
+  await save(`${extraDir}/grass_shore.png`);
+
+  await page.evaluate(() => {
+    const p = game.spawn;
+    const y = game.groundHeight(p.x, p.z);
+    game.teleport(p.x, y + 26, p.z);
+    game.camera.rotation.x = -1.12;
+    if (game.groundCover) game.groundCover.update(0, game.camera.position);
+    game.renderer.render(game.scene, game.camera);
+  });
+  await page.waitForTimeout(200);
+  await save(`${extraDir}/grass_aerial.png`);
+
+  await page.evaluate(() => {
+    const p = game.spawn;
+    const y = game.groundHeight(p.x, p.z);
+    game.teleport(p.x, y + 22, p.z);
+    game.camera.rotation.x = -0.18;
+    if (game.groundCover) game.groundCover.update(0, game.camera.position);
+    game.renderer.render(game.scene, game.camera);
+  });
+  await page.waitForTimeout(200);
+  await save(`${extraDir}/grass_airborne.png`);
 
   await page.evaluate(() => {
     const p = game.spawn;

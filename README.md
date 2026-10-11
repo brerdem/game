@@ -17,7 +17,7 @@ A first-person island explorer: collect every ruby, bounce on trampolines, and w
 - Walk into a **ruby** to collect it
 - Land on a **trampoline** for a super jump (the only way to reach the high gems)
 
-The HUD shows gems collected (`n / total`), score, and a timer that starts on the first click and pauses while paused. Collect them all to win. A smaller second island sits across a gap of sea; walk the rope bridge to reach it (falling off drops you in the water and respawns you on shore). A loading screen covers startup until textures and trees are ready.
+The HUD shows gems collected (`n / total`), score, and a timer that starts on the first click and pauses while paused. Collect them all to win. A smaller second island sits across a short gap of sea; climb the hill and walk the rope bridge (falling off drops you in the water and respawns you on shore). Birds wander the sky. A loading screen covers startup until textures and trees are ready.
 
 ## Develop
 

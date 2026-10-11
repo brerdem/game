@@ -64,6 +64,7 @@ const extras = await page.evaluate(() => {
     bridgeB: game.bridge ? { x: +game.bridge.b.x.toFixed(1), y: +game.bridge.b.y.toFixed(2), z: +game.bridge.b.z.toFixed(1) } : null,
     hudFont: getComputedStyle(document.getElementById('score-count')).fontFamily,
     loaderHidden: document.getElementById('loader').classList.contains('hidden'),
+    birds: game.counts?.birds || 0,
   };
 });
 console.log('extras', JSON.stringify(extras));
@@ -71,8 +72,9 @@ if (!extras.hasBridge || extras.bridgeLen < 20) errors.push(`[assert] missing vi
 if (extras.island2Gems < 3) errors.push(`[assert] too few island-2 gems ${extras.island2Gems}`);
 if (extras.island2Trees < 3) errors.push(`[assert] too few island-2 trees ${extras.island2Trees}`);
 if (!extras.loaderHidden) errors.push('[assert] loader still visible after ready');
-if (extras.bridgeMidH != null && extras.bridgeMidH < 0.35) errors.push(`[assert] bridge mid not walkable ${extras.bridgeMidH}`);
+if (extras.bridgeMidH != null && extras.bridgeMidH < 3.5) errors.push(`[assert] bridge not high enough ${extras.bridgeMidH}`);
 if (extras.bridgeLen > 200 || extras.bridgeLen < 24) errors.push(`[assert] unexpected bridge span ${extras.bridgeLen}`);
+if (extras.birds < 6) errors.push(`[assert] missing birds ${extras.birds}`);
 
 const cross = await page.evaluate(() => {
   const b = game.bridge;
@@ -197,6 +199,16 @@ if (extraDir) {
 
   await page.evaluate(() => {
     const p = game.spawn;
+    game.teleport(p.x, game.groundHeight(p.x, p.z), p.z);
+    game.camera.rotation.x = 0.92;
+    if (game.groundCover) game.groundCover.update(0, game.camera.position);
+    game.renderer.render(game.scene, game.camera);
+  });
+  await page.waitForTimeout(250);
+  await save(`${extraDir}/sky_up.png`);
+
+  await page.evaluate(() => {
+    const p = game.spawn;
     game.teleport(p.x, game.groundHeight(p.x, p.z) + 1.2, p.z);
     game.camera.rotation.x = 0.58;
     game.renderer.render(game.scene, game.camera);
@@ -261,6 +273,18 @@ if (extraDir) {
     await page.waitForTimeout(200);
     await page.screenshot({ path: `${extraDir}/hud.png`, timeout: 60000 });
     console.log('wrote', `${extraDir}/hud.png`);
+
+    await page.evaluate(() => {
+      const overlay = document.getElementById('overlay');
+      overlay.classList.add('ready');
+      overlay.classList.remove('hidden');
+      document.getElementById('sub').textContent = 'Paused';
+      document.getElementById('start').textContent = 'Click to resume';
+    });
+    await page.waitForTimeout(150);
+    await page.screenshot({ path: `${extraDir}/pause_card.png`, timeout: 60000 });
+    await page.evaluate(() => document.getElementById('overlay').classList.add('hidden'));
+    console.log('wrote', `${extraDir}/pause_card.png`);
 
     await page.evaluate(() => {
       const canvas = document.getElementById('game');

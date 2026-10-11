@@ -24,10 +24,14 @@ Water normal map:
 
 - `public/textures/waternormals.jpg` — three.js examples (`examples/textures/waternormals.jpg`), MIT
 
+## Birds
+
+Animated `Flamingo.glb`, `Parrot.glb`, and `Stork.glb` from the [three.js r170 examples](https://github.com/mrdoob/three.js/tree/r170/examples/models/gltf) (MIT), vendored in `public/models/birds/`.
+
 ## Fonts
 
 - **Luckiest Guy** — SIL Open Font License 1.1 — designed by Astigmatic, via [Google Fonts](https://fonts.google.com/specimen/Luckiest+Guy) / [Fontsource](https://fontsource.org/fonts/luckiest-guy). Self-hosted as `public/fonts/luckiest-guy.woff2`.
 
 ## Previously used (no longer shipped)
 
-Kenney Nature Kit and Quaternius Ultimate Nature Pack (both CC0) were used in an earlier low-poly version and have been replaced by ez-tree plus GPU grass.
+Kenney Nature Kit and Quaternius Ultimate Nature Pack (both CC0) were used in an earlier low-poly version and have been replaced by ez-tree plus CPU-snapped grass.

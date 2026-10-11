@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createNoise2D } from 'simplex-noise';
+import { plantIsland, tickWind } from './vegetation.js';
 
 // ---------------------------------------------------------------- setup
 const params = new URLSearchParams(location.search);
@@ -324,63 +324,8 @@ for (const rp of ramps) {
   scene.add(grp);
 }
 
-// ---------------------------------------------------------------- vegetation geometry helpers
-function tint(geo, color) {
-  const g = geo.index ? geo.toNonIndexed() : geo;
-  const c = new THREE.Color(color);
-  const n = g.attributes.position.count;
-  const arr = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) { arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b; }
-  g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
-  return g;
-}
-function jitter(geo, amt, seed) {
-  const p = geo.attributes.position;
-  for (let i = 0; i < p.count; i++) {
-    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-    const hsh = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719 + seed) * 43758.5453;
-    const f = 1 + amt * ((hsh - Math.floor(hsh)) - 0.5);
-    p.setXYZ(i, x * f, y * f, z * f);
-  }
-  geo.computeVertexNormals();
-  return geo;
-}
-const TRUNK = 0x6b4a2f;
-const pineGeo = mergeGeometries([
-  tint(new THREE.CylinderGeometry(0.16, 0.26, 2.6, 6).translate(0, 1.3, 0), TRUNK),
-  tint(new THREE.ConeGeometry(1.7, 3.0, 8).translate(0, 3.2, 0), 0x24502c),
-  tint(new THREE.ConeGeometry(1.3, 2.6, 8).translate(0, 4.6, 0), 0x2a5a30),
-  tint(new THREE.ConeGeometry(0.85, 2.2, 8).translate(0, 5.9, 0), 0x2f6334),
-]);
-const roundGeo = mergeGeometries([
-  tint(new THREE.CylinderGeometry(0.2, 0.32, 3.2, 6).translate(0, 1.6, 0), TRUNK),
-  tint(jitter(new THREE.IcosahedronGeometry(1.9, 1), 0.25, 1).translate(0, 4.3, 0), 0x3f7a2a),
-  tint(jitter(new THREE.IcosahedronGeometry(1.35, 1), 0.25, 2).translate(0.95, 3.6, 0.45), 0x467f2c),
-  tint(jitter(new THREE.IcosahedronGeometry(1.25, 1), 0.25, 3).translate(-0.8, 3.8, -0.55), 0x3a7027),
-]);
-const bushGeo = mergeGeometries([
-  tint(jitter(new THREE.IcosahedronGeometry(0.75, 1), 0.3, 4).scale(1, 0.7, 1).translate(0, 0.4, 0), 0x3d6e27),
-  tint(jitter(new THREE.IcosahedronGeometry(0.5, 1), 0.3, 5).scale(1, 0.75, 1).translate(0.5, 0.3, 0.25), 0x4a7d2e),
-]);
-const grassParts = [];
-for (let k = 0; k < 5; k++) {
-  const a = (k / 5) * Math.PI * 2;
-  const blade = new THREE.ConeGeometry(0.045, rand(0.45, 0.75), 3);
-  blade.translate(0, 0.3, 0).rotateZ(rand(-0.35, 0.35)).rotateX(rand(-0.35, 0.35)).translate(Math.cos(a) * 0.08, 0, Math.sin(a) * 0.08);
-  grassParts.push(tint(blade, k % 2 ? 0x6ea63a : 0x5a9431));
-}
-const grassGeo = mergeGeometries(grassParts);
-const stemGeo = tint(new THREE.CylinderGeometry(0.015, 0.02, 0.4, 3).translate(0, 0.2, 0), 0x4f8a2c);
-const headGeo = tint(new THREE.IcosahedronGeometry(0.08, 0).translate(0, 0.42, 0), 0xffffff);
-const rockGeo = tint(jitter(new THREE.IcosahedronGeometry(1, 1), 0.45, 6), 0x8a8580);
-
-const vegMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
-const grassMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide });
-const headMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, flatShading: true });
-const rockMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true });
-
-// ---------------------------------------------------------------- scattering
-const trunks = []; // collision circles
+// ---------------------------------------------------------------- scattering / collision
+const trunks = [];
 const TGRID = 8, trunkGrid = new Map();
 function addTrunk(x, z, r) {
   const t = { x, z, r }; trunks.push(t);
@@ -388,7 +333,7 @@ function addTrunk(x, z, r) {
   if (!trunkGrid.has(k)) trunkGrid.set(k, []);
   trunkGrid.get(k).push(t);
 }
-const occupied = []; // for spacing large items
+const occupied = [];
 function scatter(count, { minH = 2.4, maxH = 30, minNy = 0.88, spacing = 0, rampMargin = 2, maxTries = count * 30, clusterNoise = null }) {
   const out = [];
   let tries = 0;
@@ -411,62 +356,18 @@ function scatter(count, { minH = 2.4, maxH = 30, minNy = 0.88, spacing = 0, ramp
   }
   return out;
 }
-const dummy = new THREE.Object3D();
-function makeInstanced(geo, mat, pts, { scale = [0.8, 1.2], sink = 0.3, tiltMax = 0, shadow = true, colorVar = 0.15, baseColor = null, onEach = null }) {
-  const mesh = new THREE.InstancedMesh(geo, mat, pts.length);
-  const col = new THREE.Color();
-  pts.forEach((p, i) => {
-    const s = rand(scale[0], scale[1]);
-    dummy.position.set(p.x, p.y - sink * s, p.z);
-    dummy.rotation.set(rand(-tiltMax, tiltMax), rand(0, Math.PI * 2), rand(-tiltMax, tiltMax));
-    dummy.scale.setScalar(s);
-    dummy.updateMatrix();
-    mesh.setMatrixAt(i, dummy.matrix);
-    if (baseColor) col.set(baseColor(i)); else { const v = 1 + rand(-colorVar, colorVar); col.setRGB(v, v * (1 + rand(-0.05, 0.05)), v); }
-    mesh.setColorAt(i, col);
-    if (onEach) onEach(p, s);
-  });
-  mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  mesh.castShadow = shadow;
-  mesh.receiveShadow = true;
-  mesh.frustumCulled = false;
-  scene.add(mesh);
-  return mesh;
-}
-
-// pines like higher ground, round trees lower ground
-const pinePts = scatter(1100, { minH: 6, maxH: 34, minNy: 0.86, spacing: 3.4, rampMargin: 4, clusterNoise: { s: 60, t: -0.35 } });
-const roundPts = scatter(800, { minH: 2.6, maxH: 14, minNy: 0.88, spacing: 3.8, rampMargin: 4, clusterNoise: { s: 60, t: -0.25 } });
-const pines = makeInstanced(pineGeo, vegMat, pinePts, { scale: [0.8, 1.6], sink: 0.35, onEach: (p, s) => addTrunk(p.x, p.z, 0.26 * s) });
-const rounds = makeInstanced(roundGeo, vegMat, roundPts, { scale: [0.75, 1.3], sink: 0.35, onEach: (p, s) => addTrunk(p.x, p.z, 0.32 * s) });
-const bushPts = scatter(1600, { minH: 2.3, maxH: 26, minNy: 0.85, rampMargin: 1 });
-makeInstanced(bushGeo, vegMat, bushPts, { scale: [0.7, 1.5], sink: 0.15 });
-const grassPts = scatter(14000, { minH: 2.0, maxH: 24, minNy: 0.84, rampMargin: 0.3 });
-makeInstanced(grassGeo, grassMat, grassPts, { scale: [0.8, 1.5], sink: 0.05, shadow: false, colorVar: 0.2 });
-const flowerPts = scatter(3500, { minH: 2.5, maxH: 18, minNy: 0.88, rampMargin: 0.3, clusterNoise: { s: 30, t: 0.0 } });
-const FLOWER_COLS = [0xffe14d, 0xff6f91, 0xffffff, 0xb784ff, 0xff9a3c];
-makeInstanced(stemGeo, grassMat, flowerPts, { scale: [1, 1], sink: 0.02, shadow: false, colorVar: 0.1 });
-// re-run the same transforms for the heads: build matrices from the stem mesh
-{
-  const heads = new THREE.InstancedMesh(headGeo, headMat, flowerPts.length);
-  const stems = scene.children[scene.children.length - 1];
-  const m = new THREE.Matrix4(), c = new THREE.Color();
-  for (let i = 0; i < flowerPts.length; i++) {
-    stems.getMatrixAt(i, m); heads.setMatrixAt(i, m);
-    c.set(FLOWER_COLS[Math.floor(rng() * FLOWER_COLS.length)]); heads.setColorAt(i, c);
-  }
-  heads.frustumCulled = false;
-  scene.add(heads);
-}
-const rockPts = scatter(450, { minH: 0.3, maxH: 40, minNy: 0.6, rampMargin: 2 });
-makeInstanced(rockGeo, rockMat, rockPts, { scale: [0.3, 1.6], sink: 0.35, tiltMax: 0.4, colorVar: 0.12,
-  onEach: (p, s) => { if (s > 0.9) addTrunk(p.x, p.z, 0.8 * s); } });
 
 // ---------------------------------------------------------------- player
 const controls = new PointerLockControls(camera, document.body);
 const player = { pos: new THREE.Vector3(spawn.x, groundHeight(spawn.x, spawn.z), spawn.z), vel: new THREE.Vector3(), onGround: true };
 const PR = 0.35, WALK = 6, SPRINT = 11, GRAV = 24, JUMP = 8.2, STEP = 0.6;
+const SUPER_JUMP = 36.7; // ~28 m peak vs ~1.4 m normal jump
+const trampolines = [];
+const diamonds = [];
+const diamondDummy = new THREE.Object3D();
+let diamondMesh = null;
+let vegStats = { loaded: 0, trees: 0, bushes: 0, grass: 0, flowers: 0, treePts: [] };
+let score = 0, collected = 0, playStarted = false, elapsed = 0, won = false, bootReady = false;
 // look towards the first ramp
 {
   const rp = ramps[0];
@@ -481,14 +382,244 @@ addEventListener('keyup', (e) => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
 const overlay = document.getElementById('overlay');
-overlay.addEventListener('click', () => controls.lock());
-controls.addEventListener('lock', () => overlay.classList.add('hidden'));
+const winEl = document.getElementById('win');
+const diamondHud = document.getElementById('diamond-count');
+const scoreHud = document.getElementById('score-count');
+const timerHud = document.getElementById('timer');
+function fmtTime(t) {
+  const m = Math.floor(t / 60), s = Math.floor(t % 60);
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+function refreshHud() {
+  diamondHud.textContent = `${collected} / ${diamonds.length || 0}`;
+  scoreHud.textContent = String(score);
+  timerHud.textContent = fmtTime(elapsed);
+}
+function showWin() {
+  won = true;
+  document.getElementById('win-stats').textContent = `Time ${fmtTime(elapsed)}  ·  Score ${score}`;
+  winEl.classList.add('show');
+  overlay.classList.add('hidden');
+  if (controls.isLocked) controls.unlock();
+}
+function resetRun() {
+  won = false;
+  score = 0;
+  collected = 0;
+  elapsed = 0;
+  playStarted = true;
+  winEl.classList.remove('show');
+  for (const gem of diamonds) {
+    gem.collected = false;
+    gem.pop = 0;
+  }
+  syncDiamondInstances(0);
+  player.pos.set(spawn.x, groundHeight(spawn.x, spawn.z), spawn.z);
+  player.vel.set(0, 0, 0);
+  player.onGround = true;
+  camera.position.set(player.pos.x, player.pos.y + EYE, player.pos.z);
+  refreshHud();
+  controls.lock();
+}
+overlay.addEventListener('click', () => {
+  if (!bootReady || won) return;
+  controls.lock();
+});
+document.getElementById('again').addEventListener('click', (e) => { e.stopPropagation(); resetRun(); });
+winEl.addEventListener('click', resetRun);
+controls.addEventListener('lock', () => {
+  overlay.classList.add('hidden');
+  if (!playStarted) playStarted = true;
+});
 controls.addEventListener('unlock', () => {
+  if (won) return;
   overlay.classList.remove('hidden');
   document.getElementById('sub').textContent = 'Paused';
   document.getElementById('start').textContent = 'Click to resume';
 });
 if (DEBUG) overlay.classList.add('hidden');
+
+function hitTrampoline() {
+  for (const pad of trampolines) {
+    const dx = player.pos.x - pad.x, dz = player.pos.z - pad.z;
+    if (dx * dx + dz * dz <= pad.r * pad.r) return pad;
+  }
+  return null;
+}
+
+function makeTrampolineMesh() {
+  const g = new THREE.Group();
+  const metal = new THREE.MeshStandardMaterial({ color: 0x3a3d45, roughness: 0.42, metalness: 0.72 });
+  const spring = new THREE.MeshStandardMaterial({ color: 0x8a8f98, roughness: 0.35, metalness: 0.8 });
+  const matMat = new THREE.MeshStandardMaterial({ color: 0x3d8bff, roughness: 0.38, metalness: 0.08, emissive: 0x12306a, emissiveIntensity: 0.28 });
+  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.11, 0.82, 8), metal);
+    leg.position.set(x * 0.98, 0.41, z * 0.98);
+    g.add(leg);
+    const coil = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.025, 6, 10), spring);
+    coil.position.set(x * 0.92, 0.78, z * 0.92);
+    coil.rotation.x = Math.PI / 2;
+    g.add(coil);
+  }
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.18, 0.075, 8, 28), metal);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.84;
+  g.add(ring);
+  const pad = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.07, 28), matMat);
+  pad.position.y = 0.84;
+  pad.name = 'mat';
+  g.add(pad);
+  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  return g;
+}
+
+function diamondGeometry() {
+  const geo = new THREE.OctahedronGeometry(0.38, 0);
+  geo.scale(0.72, 1.18, 0.72);
+  return geo;
+}
+
+function placeDiamond(x, y, z, { sky = false, points = 100 } = {}) {
+  diamonds.push({
+    x, y, z, sky, points,
+    collected: false, pop: 0,
+    baseY: y, phase: rand(0, Math.PI * 2),
+  });
+}
+
+function syncDiamondInstances(time) {
+  if (!diamondMesh) return;
+  for (let i = 0; i < diamonds.length; i++) {
+    const gem = diamonds[i];
+    if (gem.collected && gem.pop >= 1) {
+      diamondDummy.scale.setScalar(0.0001);
+      diamondDummy.position.set(gem.x, gem.y, gem.z);
+    } else {
+      const bob = Math.sin(time * 2.2 + gem.phase) * 0.22;
+      let s = 1;
+      let lift = 0;
+      if (gem.pop > 0) {
+        const t = gem.pop;
+        s = Math.max(0.001, 1 + t * 0.85 - t * t * 1.7);
+        lift = t * 1.35;
+      }
+      diamondDummy.position.set(gem.x, gem.baseY + bob + lift, gem.z);
+      diamondDummy.rotation.set(0.35, time * 1.8 + gem.phase, 0.15);
+      diamondDummy.scale.setScalar(s);
+    }
+    diamondDummy.updateMatrix();
+    diamondMesh.setMatrixAt(i, diamondDummy.matrix);
+  }
+  diamondMesh.instanceMatrix.needsUpdate = true;
+}
+
+function updateDiamonds(dt, time) {
+  if (won) return;
+  const px = player.pos.x, py = player.pos.y + 1.05, pz = player.pos.z;
+  for (const gem of diamonds) {
+    if (gem.collected) {
+      if (gem.pop < 1) gem.pop = Math.min(1, gem.pop + dt * 3.6);
+      continue;
+    }
+    const dx = px - gem.x, dy = py - gem.baseY, dz = pz - gem.z;
+    if (dx * dx + dz * dz < 1.45 * 1.45 && Math.abs(dy) < 1.9) {
+      gem.collected = true;
+      gem.pop = 0.001;
+      collected += 1;
+      score += gem.points;
+      refreshHud();
+      if (collected >= diamonds.length) showWin();
+    }
+  }
+  syncDiamondInstances(time);
+}
+
+function updateTrampolines(dt) {
+  for (const pad of trampolines) {
+    pad.squash = Math.max(0, pad.squash - dt * 2.8);
+    if (pad.mat) pad.mat.scale.y = 1 - 0.48 * Math.sin(pad.squash * Math.PI);
+  }
+}
+
+function toMap(x, z) {
+  return [(x / MM_RANGE * 0.5 + 0.5) * MM, (z / MM_RANGE * 0.5 + 0.5) * MM];
+}
+
+function stampTrees(pts) {
+  const bctx = mmBase.getContext('2d');
+  bctx.fillStyle = 'rgba(20,60,25,0.55)';
+  for (const p of pts) {
+    const [u, v] = toMap(p.x, p.z);
+    bctx.fillRect(u - 0.8, v - 0.8, 1.6, 1.6);
+  }
+}
+
+function buildTrampolines() {
+  const spots = [];
+  for (let i = 0; i < 18 && spots.length < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + rand(-0.25, 0.25);
+    const found = findFlat(Math.cos(a) * 70, Math.sin(a) * 70, 55, 220, 2.6, 16);
+    if (!found) continue;
+    if (Math.hypot(found.x - spawn.x, found.z - spawn.z) < 22) continue;
+    if (nearAnyRamp(found.x, found.z, 8)) continue;
+    if (spots.some((s) => Math.hypot(s.x - found.x, s.z - found.z) < 36)) continue;
+    spots.push({ x: found.x, z: found.z, y: terrainHeight(found.x, found.z) });
+  }
+  for (const spot of spots) {
+    const mesh = makeTrampolineMesh();
+    const s = rand(1.05, 1.25);
+    mesh.position.set(spot.x, spot.y, spot.z);
+    mesh.rotation.y = rand(0, Math.PI * 2);
+    mesh.scale.setScalar(s);
+    scene.add(mesh);
+    const mat = mesh.getObjectByName('mat');
+    trampolines.push({
+      x: spot.x, z: spot.z, y: spot.y,
+      padY: spot.y + 0.84 * s,
+      r: 1.15 * s,
+      mesh, mat, squash: 0,
+    });
+  }
+}
+
+function buildDiamonds() {
+  const ground = scatter(40, { minH: 2.4, maxH: 26, minNy: 0.8, spacing: 14, rampMargin: 2.5, maxTries: 40 * 40 });
+  for (const p of ground) placeDiamond(p.x, p.y + 1.25, p.z, { points: 100 });
+  for (const rp of ramps) {
+    if (rp.PL <= 0) continue;
+    const top = localToWorld(rp, 0, rp.L + rp.PL * 0.5);
+    placeDiamond(top.x, rp.base + rp.rise + 1.35, top.z, { points: 150 });
+  }
+  for (const pad of trampolines) {
+    placeDiamond(pad.x, pad.padY + 19.5, pad.z, { sky: true, points: 250 });
+    const a = rand(0, Math.PI * 2);
+    placeDiamond(pad.x + Math.cos(a) * 3.2, pad.padY + 23.5, pad.z + Math.sin(a) * 3.2, { sky: true, points: 250 });
+  }
+  const extraHills = scatter(6, { minH: 14, maxH: 30, minNy: 0.82, spacing: 18, rampMargin: 4 });
+  for (const p of extraHills) placeDiamond(p.x, p.y + 1.3, p.z, { points: 150 });
+
+  diamondMesh = new THREE.InstancedMesh(
+    diamondGeometry(),
+    new THREE.MeshPhysicalMaterial({
+      color: 0x7af2ff,
+      emissive: 0x2aa8ff,
+      emissiveIntensity: 0.85,
+      metalness: 0.15,
+      roughness: 0.08,
+      transparent: true,
+      opacity: 0.92,
+      transmission: 0.35,
+      ior: 2.3,
+      reflectivity: 1,
+    }),
+    Math.max(diamonds.length, 1)
+  );
+  diamondMesh.castShadow = true;
+  diamondMesh.frustumCulled = false;
+  scene.add(diamondMesh);
+  syncDiamondInstances(0);
+  refreshHud();
+}
 
 function walkable(x, z) {
   if (terrainHeight(x, z) < -0.7 && rampsHeight(x, z) === -Infinity) return false; // deep water
@@ -519,7 +650,8 @@ function updatePlayer(dt) {
     if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(keys.ShiftLeft || keys.ShiftRight ? SPRINT : WALK);
     if (keys.Space && player.onGround) { player.vel.y = JUMP; player.onGround = false; }
   }
-  const k = player.onGround ? 12 : 2.5;
+  const airborne = !player.onGround;
+  const k = player.onGround ? 12 : (player.vel.y > 10 ? 5.2 : 4.2);
   const blend = 1 - Math.exp(-k * dt);
   player.vel.x += (wish.x - player.vel.x) * blend;
   player.vel.z += (wish.z - player.vel.z) * blend;
@@ -527,17 +659,27 @@ function updatePlayer(dt) {
 
   // horizontal move, axis separated so you slide along walls / shoreline
   const nx = player.pos.x + player.vel.x * dt;
-  if (walkable(nx, player.pos.z)) player.pos.x = nx; else player.vel.x = 0;
+  if (walkable(nx, player.pos.z) || airborne) player.pos.x = nx;
+  else player.vel.x = 0;
   const nz = player.pos.z + player.vel.z * dt;
-  if (walkable(player.pos.x, nz)) player.pos.z = nz; else player.vel.z = 0;
+  if (walkable(player.pos.x, nz) || airborne) player.pos.z = nz;
+  else player.vel.z = 0;
   pushOutOfTrunks();
 
   // vertical
   player.pos.y += player.vel.y * dt;
-  const g = groundHeight(player.pos.x, player.pos.z);
-  if (player.pos.y <= g) { player.pos.y = g; player.vel.y = 0; player.onGround = true; }
-  else if (player.onGround && player.vel.y <= 0 && player.pos.y - g < 0.7) { player.pos.y = g; player.vel.y = 0; }
-  else player.onGround = false;
+  const pad = hitTrampoline();
+  if (pad && player.pos.y <= pad.padY + 0.28 && player.vel.y <= 8) {
+    player.pos.y = pad.padY;
+    player.vel.y = SUPER_JUMP;
+    player.onGround = false;
+    pad.squash = 1;
+  } else {
+    const g = groundHeight(player.pos.x, player.pos.z);
+    if (player.pos.y <= g) { player.pos.y = g; player.vel.y = 0; player.onGround = true; }
+    else if (player.onGround && player.vel.y <= 0 && player.pos.y - g < 0.7) { player.pos.y = g; player.vel.y = 0; }
+    else player.onGround = false;
+  }
 
   camera.position.set(player.pos.x, player.pos.y + EYE, player.pos.z);
 }
@@ -573,9 +715,6 @@ const mmBase = document.createElement('canvas'); mmBase.width = mmBase.height = 
     img.data[o] = r; img.data[o + 1] = g; img.data[o + 2] = b; img.data[o + 3] = 255;
   }
   bctx.putImageData(img, 0, 0);
-  const toMap = (x, z) => [(x / MM_RANGE * 0.5 + 0.5) * MM, (z / MM_RANGE * 0.5 + 0.5) * MM];
-  bctx.fillStyle = 'rgba(20,60,25,0.55)';
-  for (const p of pinePts.concat(roundPts)) { const [u, v] = toMap(p.x, p.z); bctx.fillRect(u - 0.8, v - 0.8, 1.6, 1.6); }
   bctx.fillStyle = '#8a5a2b'; bctx.strokeStyle = '#3d2610'; bctx.lineWidth = 1;
   for (const rp of ramps) {
     const corners = [[-rp.W / 2, 0], [rp.W / 2, 0], [rp.W / 2, rp.L], [rp.PL / 2, rp.L], [rp.PL / 2, rp.L + rp.PL], [-rp.PL / 2, rp.L + rp.PL], [-rp.PL / 2, rp.L], [-rp.W / 2, rp.L]];
@@ -604,6 +743,19 @@ function drawMinimap() {
   mctx.beginPath(); mctx.moveTo(14, 0); mctx.lineTo(-9, -9); mctx.lineTo(-4, 0); mctx.lineTo(-9, 9); mctx.closePath();
   mctx.stroke(); mctx.fill();
   mctx.restore();
+  for (const gem of diamonds) {
+    if (gem.collected) continue;
+    const [du, dv] = toMap(gem.x, gem.z);
+    mctx.fillStyle = gem.sky ? '#7af2ff' : '#39d6ff';
+    mctx.beginPath(); mctx.arc(du, dv, gem.sky ? 3.4 : 2.6, 0, Math.PI * 2); mctx.fill();
+    mctx.strokeStyle = 'rgba(255,255,255,0.8)'; mctx.lineWidth = 1; mctx.stroke();
+  }
+  for (const pad of trampolines) {
+    const [tu, tv] = toMap(pad.x, pad.z);
+    mctx.fillStyle = '#3d8bff';
+    mctx.beginPath(); mctx.arc(tu, tv, 5.5, 0, Math.PI * 2); mctx.fill();
+    mctx.strokeStyle = '#fff'; mctx.lineWidth = 1.6; mctx.stroke();
+  }
   // north marker
   mctx.fillStyle = 'rgba(0,0,0,0.5)'; mctx.font = 'bold 22px system-ui'; mctx.textAlign = 'center';
   mctx.fillText('N', MM / 2, 26);
@@ -617,8 +769,15 @@ const SNAP = (2 * SH) / 2048;
 function frame() {
   const rawDt = clock.getDelta();
   const dt = Math.min(rawDt, 0.05);
+  if (playStarted && !won && (controls.isLocked || DEBUG)) elapsed += dt;
   // two substeps for stable collisions at sprint speed
   updatePlayer(dt / 2); updatePlayer(dt / 2);
+  updateDiamonds(dt, clock.elapsedTime);
+  updateTrampolines(dt);
+  tickWind(clock.elapsedTime);
+  if (diamondMesh?.material) {
+    diamondMesh.material.emissiveIntensity = 0.7 + 0.35 * Math.sin(clock.elapsedTime * 6);
+  }
 
   // sun/shadow camera follows the player, snapped to texels to avoid shimmering
   const cx = Math.round(player.pos.x / SNAP) * SNAP, cz = Math.round(player.pos.z / SNAP) * SNAP;
@@ -632,10 +791,11 @@ function frame() {
   sky.position.copy(camera.position);
   renderer.render(scene, camera);
   drawMinimap();
+  refreshHud();
 
   frames++; fpsT += rawDt;
   if (fpsT > 0.5) { fps = frames / fpsT; frames = 0; fpsT = 0;
-    hud.textContent = `${fps.toFixed(0)} fps   x ${player.pos.x.toFixed(0)}  z ${player.pos.z.toFixed(0)}  alt ${player.pos.y.toFixed(1)} m`; }
+    if (DEBUG) hud.textContent = `${fps.toFixed(0)} fps   x ${player.pos.x.toFixed(0)}  z ${player.pos.z.toFixed(0)}  alt ${player.pos.y.toFixed(1)} m`; }
 }
 renderer.setAnimationLoop(frame);
 
@@ -646,9 +806,11 @@ addEventListener('resize', () => {
 });
 
 // small hook for automated tests / debugging
-window.game = { keys, get fps() { return fps; }, player, camera, ramps, spawn, groundHeight, terrainHeight, renderer, scene,
-  counts: { pines: pinePts.length, rounds: roundPts.length, bushes: bushPts.length, grass: grassPts.length, flowers: flowerPts.length, rocks: rockPts.length, ramps: ramps.length } };
-// deterministic physics stepping for tests: game.simulate(seconds, {KeyW:true,...})
+window.game = {
+  keys, get fps() { return fps; }, player, camera, ramps, spawn, groundHeight, terrainHeight, renderer, scene,
+  diamonds, trampolines, get score() { return score; }, get collected() { return collected; }, get elapsed() { return elapsed; },
+  counts: { ramps: ramps.length },
+};
 window.game.simulate = (seconds, k = {}) => {
   Object.assign(keys, k);
   for (let t = 0; t < seconds; t += 1 / 120) updatePlayer(1 / 120);
@@ -656,4 +818,32 @@ window.game.simulate = (seconds, k = {}) => {
   return player.pos.toArray();
 };
 window.game.setYaw = (y) => { camera.rotation.y = y; };
-window.__ready = true;
+window.game.teleport = (x, y, z) => {
+  player.pos.set(x, y, z); player.vel.set(0, 0, 0); player.onGround = true;
+  camera.position.set(x, y + EYE, z);
+};
+
+async function boot() {
+  vegStats = await plantIsland(scene, { scatter, addTrunk, rand });
+  stampTrees(vegStats.treePts);
+  buildTrampolines();
+  buildDiamonds();
+  window.game.counts = {
+    trees: vegStats.trees,
+    bushes: vegStats.bushes,
+    grass: vegStats.grass,
+    flowers: vegStats.flowers,
+    models: vegStats.loaded,
+    diamonds: diamonds.length,
+    trampolines: trampolines.length,
+    ramps: ramps.length,
+  };
+  window.game.modelsLoaded = true;
+  bootReady = true;
+  if (DEBUG) playStarted = true;
+  window.__ready = true;
+}
+boot().catch((err) => {
+  console.error(err);
+  window.__ready = true;
+});

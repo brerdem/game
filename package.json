@@ -17,8 +17,7 @@
   },
   "devDependencies": {
     "playwright": "1.48",
-    "vite": "^5.4.21",
-    "vite-plugin-singlefile": "^2.3.3"
+    "vite": "^5.4.21"
   },
   "type": "module"
 }

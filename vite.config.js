@@ -1,3 +1,10 @@
 import { defineConfig } from 'vite';
-import { viteSingleFile } from 'vite-plugin-singlefile';
-export default defineConfig({ base: './', plugins: [viteSingleFile()], build: { outDir: 'dist', chunkSizeWarningLimit: 2000 } });
+
+export default defineConfig({
+  base: './',
+  build: {
+    outDir: 'dist',
+    chunkSizeWarningLimit: 2000,
+    assetsInlineLimit: 0,
+  },
+});

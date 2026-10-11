@@ -4,6 +4,8 @@ A first-person island explorer: collect every ruby, bounce on trampolines, and w
 
 **Play it live:** https://brerdem.github.io/game/
 
+**WebGPU build:** https://brerdem.github.io/game/game-gpu/ (falls back to WebGL2 when WebGPU is unavailable)
+
 ![Island FPS screenshot](screenshot.png)
 
 ## Controls
@@ -21,9 +23,11 @@ The HUD shows gems collected (`n / total`), score, and a timer that starts on th
 
 ## Develop
 
-- `npm run dev` – local dev server
-- `npm run build` – Vite build to `dist/` (`base: './'`, ready for GitHub Pages)
-- `node scripts/check.mjs 'http://127.0.0.1:4173/?debug' screenshot.png` – headless check + screenshot
+- `npm run dev` – local WebGL dev server
+- `npm run dev:gpu` – local WebGPU dev server
+- `npm run build` – Vite build of both the WebGL site (`dist/`) and the WebGPU sub-app (`dist/game-gpu/`)
+- `node scripts/check.mjs 'http://127.0.0.1:4173/?debug' screenshot.png` – headless WebGL check + screenshot
+- `node scripts/check-gpu.mjs` – headless WebGPU (or WebGL2 fallback) check
 - `node scripts/physics.mjs` – ramp / jump / shoreline physics test
 
 URL flags: `?debug` (hide overlay, keyboard works without pointer lock), `?low` (fewer blades/trees, lower shadows), `?seed=N`, `?yaw=`, `?pitch=`

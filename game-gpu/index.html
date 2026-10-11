@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Island FPS (WebGPU)</title>
+<style>
+  @font-face {
+    font-family: 'Luckiest Guy';
+    src: url('./fonts/luckiest-guy.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+  }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #6ea8d4; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  canvas#game { display: block; visibility: hidden; }
+  body.booted canvas#game { visibility: visible; }
+  #minimap, #game-hud, #crosshair { opacity: 0; }
+  body.playing #minimap, body.playing #game-hud, body.playing #crosshair { opacity: 1; }
+  #loader { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(180deg, #5b9bd4 0%, #87b8d8 55%, #c5d8ea 100%); z-index: 20; color: #fff; }
+  #loader.hidden { display: none; }
+  #loader h1 { font-family: 'Luckiest Guy', system-ui, sans-serif; font-size: clamp(48px, 9vw, 86px); margin: 0 0 10px; letter-spacing: 0.04em; text-shadow: 0 3px 0 #1b3d5c, 0 8px 18px rgba(0,0,0,0.28); }
+  #loader .sub { margin: 0 0 28px; opacity: 0.9; font-size: 17px; font-family: system-ui, sans-serif; letter-spacing: 0.01em; word-spacing: 0.06em; }
+  #loader-bar { width: min(420px, 70vw); height: 18px; background: rgba(255,255,255,0.28); border: 3px solid #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,0.2); }
+  #loader-fill { height: 100%; width: 0; background: linear-gradient(90deg, #2b7a4b, #5ad07a); transition: width 0.18s ease; }
+  #loader-pct { margin-top: 10px; font-family: 'Luckiest Guy', system-ui, sans-serif; font-size: 22px; text-shadow: 0 2px 0 #1b3d5c; }
+  #overlay {
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    background: linear-gradient(180deg, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.22) 42%, rgba(0,0,0,0.7) 100%);
+    cursor: default; z-index: 10;
+  }
+  #overlay.ready { display: flex; }
+  #overlay.hidden { display: none; }
+  #panel {
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    padding: 46px 58px 42px;
+    border-radius: 24px;
+    max-width: 720px;
+    text-align: center;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.14);
+    box-shadow: 0 18px 56px rgba(0,0,0,0.5);
+  }
+  #panel.hidden { display: none; }
+  #panel h1, #panel p, #panel table, #panel td, #start, #exit, #thanks h1, #thanks p {
+    font-family: 'Luckiest Guy', system-ui, sans-serif;
+    font-feature-settings: "liga" 0, "clig" 0, "calt" 0;
+  }
+  #panel h1 { margin: 0 0 10px; font-size: clamp(60px, 9vw, 92px); letter-spacing: 0.08em; }
+  #panel p { margin: 8px 0 24px; color: #fff; font-size: clamp(20px, 2.8vw, 26px); letter-spacing: 0.08em; word-spacing: 0.22em; }
+  #panel table { margin: 0 auto 28px; border-collapse: collapse; text-align: left; font-size: clamp(18px, 2.4vw, 24px); }
+  #panel td { padding: 8px 16px; color: #fff; letter-spacing: 0.08em; word-spacing: 0.22em; }
+  kbd {
+    background: #111;
+    border: 1px solid #444;
+    border-bottom-width: 3px;
+    border-color: #555 #2a2a2a #111;
+    border-radius: 8px;
+    padding: 5px 12px;
+    font-family: 'Luckiest Guy', system-ui, sans-serif;
+    font-size: 17px;
+    color: #fff;
+    letter-spacing: 0.04em;
+  }
+  .actions { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  #start {
+    display: inline-block; background: #1f7a46; color: #fff; padding: 18px 56px;
+    border: 0; border-radius: 14px; font-size: clamp(28px, 4vw, 38px); letter-spacing: 0.08em; cursor: pointer;
+  }
+  #exit {
+    display: inline-block; background: transparent; color: #fff; padding: 10px 28px;
+    border: 2px solid rgba(255,255,255,0.45); border-radius: 12px;
+    font-size: clamp(18px, 2.4vw, 22px); letter-spacing: 0.06em; cursor: pointer;
+  }
+  #start:hover { background: #259154; }
+  #exit:hover { background: rgba(255,255,255,0.1); }
+  #thanks {
+    display: none; text-align: center; color: #fff;
+    background: rgba(0,0,0,0.72); padding: 48px 56px; border-radius: 22px;
+  }
+  #thanks.show { display: block; }
+  #thanks h1 { font-size: clamp(36px, 6vw, 56px); letter-spacing: 0.06em; margin: 0 0 12px; }
+  #thanks p { font-size: 22px; letter-spacing: 0.04em; }
+  #crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255,255,255,0.85); box-shadow: 0 0 2px rgba(0,0,0,0.8); pointer-events: none; z-index: 5; }
+  #minimap { position: fixed; right: 16px; bottom: 16px; width: min(220px, 34vmin); height: min(220px, 34vmin); border-radius: 50%; border: 3px solid rgba(255,255,255,0.85); box-shadow: 0 4px 18px rgba(0,0,0,0.4); z-index: 6; pointer-events: none; }
+  #hud { position: fixed; left: 12px; top: 10px; color: #fff; font-size: 12px; text-shadow: 0 1px 2px rgba(0,0,0,0.8); z-index: 6; pointer-events: none; white-space: pre; }
+  #game-hud { position: fixed; left: 18px; top: 10px; z-index: 7; pointer-events: none; font-family: 'Luckiest Guy', system-ui, sans-serif; }
+  .hud-row { margin: 0; line-height: 1.05; }
+  .hud-row .label { display: none; }
+  .hud-row .value {
+    color: #fff8e8;
+    font-size: clamp(34px, 5.6vw, 58px);
+    letter-spacing: 0.02em;
+    text-shadow:
+      -3px -3px 0 #1a1208, 3px -3px 0 #1a1208, -3px 3px 0 #1a1208, 3px 3px 0 #1a1208,
+      0 5px 0 #1a1208, 0 10px 16px rgba(0,0,0,0.35);
+  }
+  .hud-row .gem {
+    color: #ff3048;
+    font-size: clamp(26px, 4vw, 40px);
+    text-shadow:
+      -3px -3px 0 #3a0008, 3px -3px 0 #3a0008, -3px 3px 0 #3a0008, 3px 3px 0 #3a0008,
+      0 0 14px rgba(255, 40, 60, 0.55);
+  }
+  #win { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(8, 18, 30, 0.55); z-index: 12; }
+  #win.show { display: flex; }
+  #win .panel { background: rgba(255,255,255,0.94); color: #1c2b36; padding: 28px 36px; border-radius: 16px; text-align: center; max-width: 420px; box-shadow: 0 12px 40px rgba(0,0,0,0.35); }
+  #win h2 { margin: 0 0 8px; font-size: 32px; font-family: 'Luckiest Guy', system-ui, sans-serif; }
+  #win p { margin: 6px 0; color: #44555f; }
+  #win .again { display: inline-block; margin-top: 12px; background: #2b7a4b; color: #fff; padding: 10px 22px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+  #gpu-backend {
+    position: fixed; right: 14px; top: 12px; z-index: 8; pointer-events: none;
+    font-family: system-ui, sans-serif; font-size: 12px; letter-spacing: 0.04em;
+    color: #fff; background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.2);
+    padding: 5px 10px; border-radius: 999px; text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  }
+</style>
+</head>
+<body>
+  <div id="loader">
+    <h1>Island</h1>
+    <p class="sub">Two&nbsp;islands &middot; collect&nbsp;every&nbsp;ruby</p>
+    <div id="loader-bar"><div id="loader-fill"></div></div>
+    <div id="loader-pct">0%</div>
+  </div>
+  <div id="overlay">
+    <div id="thanks">
+      <h1>THANKS FOR PLAYING</h1>
+      <p>YOU CAN CLOSE THIS TAB</p>
+    </div>
+    <div id="panel">
+      <h1>ISLAND</h1>
+      <p id="sub">COLLECT EVERY RUBY</p>
+      <table>
+        <tr><td><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></td><td>MOVE</td></tr>
+        <tr><td><kbd>MOUSE</kbd></td><td>LOOK&nbsp;AROUND</td></tr>
+        <tr><td><kbd>SHIFT</kbd></td><td>SPRINT</td></tr>
+        <tr><td><kbd>SPACE</kbd></td><td>JUMP</td></tr>
+        <tr><td><kbd>ESC</kbd></td><td>PAUSE</td></tr>
+      </table>
+      <div class="actions">
+        <button type="button" id="start">PLAY</button>
+        <button type="button" id="exit">EXIT GAME</button>
+      </div>
+    </div>
+  </div>
+  <div id="crosshair"></div>
+  <div id="game-hud">
+    <div class="hud-row"><span class="label">Gems</span><span class="value gem" id="diamond-count">0 / 0</span></div>
+    <div class="hud-row"><span class="label">Score</span><span class="value" id="score-count">0</span></div>
+    <div class="hud-row"><span class="label">Time</span><span class="value" id="timer">00:00</span></div>
+  </div>
+  <div id="hud"></div>
+  <div id="win">
+    <div class="panel">
+      <h2>You win</h2>
+      <p id="win-stats">All diamonds collected.</p>
+      <div class="again" id="again">Click to play again</div>
+    </div>
+  </div>
+  <canvas id="minimap" width="440" height="440"></canvas>
+  <div id="gpu-backend">starting…</div>
+  <script type="module" src="../src-gpu/main.js"></script>
+</body>
+</html>

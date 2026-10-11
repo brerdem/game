@@ -1,0 +1,24 @@
+{
+  "name": "island-fps",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173 --host 127.0.0.1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "simplex-noise": "^4.0.3",
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "playwright": "1.48",
+    "vite": "^5.4.21",
+    "vite-plugin-singlefile": "^2.3.3"
+  },
+  "type": "module"
+}

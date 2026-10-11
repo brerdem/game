@@ -2,12 +2,14 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createNoise2D } from 'simplex-noise';
-import { plantIsland, tickWind } from './vegetation.js';
+import { applyTerrainSplat, bakeHeightTexture, createClouds, createEnvironment, createOcean } from './look.js';
+import { createGroundCover, plantTrees, tickNature } from './nature.js';
 
 // ---------------------------------------------------------------- setup
 const params = new URLSearchParams(location.search);
 const DEBUG = params.has('debug');
 const SEED = parseInt(params.get('seed') || '1337', 10);
+const LOW = params.has('low');
 
 function mulberry32(a) {
   return function () {
@@ -165,51 +167,31 @@ for (const rp of ramps) {
 
 // ---------------------------------------------------------------- renderer / scene
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: DEBUG });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, LOW ? 1 : 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.88;
+renderer.toneMappingExposure = 1.12;
 renderer.domElement.id = 'game';
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
-const FOG_COLOR = new THREE.Color(0xb9d3e6);
-scene.fog = new THREE.Fog(FOG_COLOR, 140, 750);
-scene.background = FOG_COLOR;
-
 const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 3000);
+camera.layers.enable(1);
 
-// sky + sun
-const sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - 42), THREE.MathUtils.degToRad(150));
-// gradient sky dome with a sun disc + glow (not tone mapped, not fogged; follows the camera)
-const sky = new THREE.Mesh(
-  new THREE.SphereGeometry(1500, 32, 16),
-  new THREE.ShaderMaterial({
-    side: THREE.BackSide, depthWrite: false, fog: false, toneMapped: false,
-    uniforms: { top: { value: new THREE.Color(0x2f6fc4) }, mid: { value: new THREE.Color(0x7fb2e6) }, horizon: { value: FOG_COLOR.clone() }, sunDir: { value: sunDir } },
-    vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position = p.xyww; }`,
-    fragmentShader: `uniform vec3 top, mid, horizon, sunDir; varying vec3 vDir;
-      void main(){ vec3 d = normalize(vDir); float h = max(d.y, 0.0);
-        vec3 c = mix(horizon, mid, smoothstep(0.0, 0.18, h)); c = mix(c, top, smoothstep(0.18, 0.9, h));
-        float s = max(dot(d, normalize(sunDir)), 0.0);
-        c += vec3(1.0, 0.92, 0.75) * (pow(s, 900.0) * 3.0 + pow(s, 40.0) * 0.25);
-        if (d.y < 0.0) c = horizon;
-        gl_FragColor = vec4(c, 1.0);
-        #include <colorspace_fragment>
-      }`,
-  })
-);
-sky.renderOrder = -1;
-sky.frustumCulled = false;
-scene.add(sky);
+// sky + sun + haze
+const sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - 48), THREE.MathUtils.degToRad(150));
+const { env: gemEnv } = createEnvironment(renderer, scene, sunDir);
+const clouds = createClouds(scene, sunDir);
 
-const hemi = new THREE.HemisphereLight(0xcfe6ff, 0x5a6b3a, 1.3);
+const hemi = new THREE.HemisphereLight(0xd7e7f6, 0x6a7a48, 1.18);
+hemi.layers.enable(1);
 scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xfff1dc, 3.2);
+const sun = new THREE.DirectionalLight(0xfff4e0, 2.35);
+sun.layers.enable(1);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(LOW ? 1024 : 2048, LOW ? 1024 : 2048);
 const SH = 70;
 Object.assign(sun.shadow.camera, { left: -SH, right: SH, top: SH, bottom: -SH, near: 1, far: 500 });
 sun.shadow.bias = -0.0004;
@@ -221,64 +203,21 @@ const tGeo = new THREE.PlaneGeometry(WORLD, WORLD, SEG, SEG);
 tGeo.rotateX(-Math.PI / 2);
 {
   const pos = tGeo.attributes.position;
-  const col = new Float32Array(pos.count * 3);
-  const sand = new THREE.Color(0xdcc89a), wetSand = new THREE.Color(0xa8946a);
-  const grassA = new THREE.Color(0x4d8a2e), grassB = new THREE.Color(0x7a9a3a), grassDark = new THREE.Color(0x3a6b25);
-  const rock = new THREE.Color(0x7c7670), rockDark = new THREE.Color(0x5e5a55);
-  const c = new THREE.Color(), g = new THREE.Color(), r = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), z = pos.getZ(i);
     const ix = Math.round((x + HALF) / CELL), iz = Math.round((z + HALF) / CELL);
-    const h = heights[iz * N + ix];
-    pos.setY(i, h);
-    const ny = terrainNormalY(x, z);
-    // grass with variation
-    const gv = 0.5 + 0.5 * noiseB(x / 25, z / 25);
-    g.copy(grassA).lerp(grassB, gv).lerp(grassDark, 0.7 * (0.5 + 0.5 * noiseC(x / 7, z / 7)));
-    r.copy(rock).lerp(rockDark, 0.5 + 0.5 * noiseC(x / 5, z / 5));
-    c.copy(h < 0.2 ? wetSand : sand);
-    if (h < 0.2) c.lerp(sand, smooth(-1.5, 0.2, h));
-    c.lerp(g, smooth(1.3, 2.4, h + 0.4 * noiseC(x / 9, z / 9)));
-    const rockT = Math.max(smooth(0.86, 0.72, ny), smooth(24, 32, h) * 0.8);
-    if (h > 1.0) c.lerp(r, rockT);
-    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+    pos.setY(i, heights[iz * N + ix]);
   }
-  tGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   tGeo.computeVertexNormals();
 }
-const terrain = new THREE.Mesh(tGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0 }));
+const terrain = new THREE.Mesh(tGeo, new THREE.MeshStandardMaterial({ roughness: 0.92, metalness: 0 }));
 terrain.receiveShadow = true;
 terrain.castShadow = true;
 scene.add(terrain);
+applyTerrainSplat(terrain);
 
-// ---------------------------------------------------------------- water (procedural tiling normal map)
-function makeWaterNormals(size = 256) {
-  const cv = document.createElement('canvas'); cv.width = cv.height = size;
-  const ctx = cv.getContext('2d');
-  const img = ctx.createImageData(size, size);
-  const waves = [];
-  const wr = mulberry32(SEED + 7);
-  for (let k = 0; k < 10; k++) waves.push({ kx: Math.floor(wr() * 9) - 4, ky: Math.floor(wr() * 9) - 4, p: wr() * 6.28, a: 0.5 + wr() });
-  const H = (i, j) => { let s = 0; for (const w of waves) s += w.a * Math.sin(2 * Math.PI * (w.kx * i + w.ky * j) / size + w.p); return s; };
-  for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) {
-    const dx = H(i + 1, j) - H(i - 1, j), dy = H(i, j + 1) - H(i, j - 1);
-    const n = new THREE.Vector3(-dx * 2, -dy * 2, 1).normalize();
-    const o = (j * size + i) * 4;
-    img.data[o] = (n.x * 0.5 + 0.5) * 255; img.data[o + 1] = (n.y * 0.5 + 0.5) * 255; img.data[o + 2] = (n.z * 0.5 + 0.5) * 255; img.data[o + 3] = 255;
-  }
-  ctx.putImageData(img, 0, 0);
-  const t = new THREE.CanvasTexture(cv);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(400, 400);
-  return t;
-}
-const waterNormals = makeWaterNormals();
-const water = new THREE.Mesh(
-  new THREE.PlaneGeometry(6000, 6000).rotateX(-Math.PI / 2),
-  new THREE.MeshStandardMaterial({ color: 0x2a7f9e, roughness: 0.18, metalness: 0.15, transparent: true, opacity: 0.82, normalMap: waterNormals, normalScale: new THREE.Vector2(0.35, 0.35) })
-);
-water.receiveShadow = true;
-scene.add(water);
+const heightTex = bakeHeightTexture(terrainHeight, WORLD);
+const ocean = createOcean(scene, sunDir, { heightTex, WORLD, LOW });
 
 // ---------------------------------------------------------------- ramp meshes
 function plankTexture() {
@@ -368,6 +307,8 @@ const trampolines = [];
 const diamonds = [];
 const diamondDummy = new THREE.Object3D();
 let diamondMesh = null;
+let diamondGlow = null;
+let groundCover = null;
 let vegStats = { loaded: 0, trees: 0, bushes: 0, grass: 0, flowers: 0, treePts: [] };
 let score = 0, collected = 0, playStarted = false, elapsed = 0, won = false, bootReady = false;
 // look towards the first ramp
@@ -500,12 +441,34 @@ function makeTrampolineMesh() {
 }
 
 function diamondGeometry() {
-  const a = new THREE.OctahedronGeometry(0.46, 0);
-  a.scale(0.68, 1.22, 0.68);
-  const b = new THREE.OctahedronGeometry(0.46, 0);
-  b.scale(0.68, 1.22, 0.68);
-  b.rotateY(Math.PI / 4);
-  return mergeGeometries([a, b]);
+  const crown = new THREE.ConeGeometry(0.36, 0.26, 8, 1);
+  crown.translate(0, 0.22, 0);
+  const pavilion = new THREE.ConeGeometry(0.36, 0.5, 8, 1);
+  pavilion.rotateX(Math.PI);
+  pavilion.translate(0, -0.16, 0);
+  const girdle = new THREE.CylinderGeometry(0.38, 0.38, 0.055, 8, 1, true);
+  girdle.translate(0, 0.07, 0);
+  const table = new THREE.CircleGeometry(0.14, 8);
+  table.rotateX(-Math.PI / 2);
+  table.translate(0, 0.35, 0);
+  const geo = mergeGeometries([crown, pavilion, girdle, table], false) || new THREE.OctahedronGeometry(0.46, 0);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function gemGlowTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 30);
+  g.addColorStop(0, 'rgba(255,70,90,0.85)');
+  g.addColorStop(0.4, 'rgba(200,10,40,0.28)');
+  g.addColorStop(1, 'rgba(120,0,20,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 function placeDiamond(x, y, z, { sky = false, points = 100 } = {}) {
@@ -538,8 +501,16 @@ function syncDiamondInstances(time) {
     }
     diamondDummy.updateMatrix();
     diamondMesh.setMatrixAt(i, diamondDummy.matrix);
+    if (diamondGlow) {
+      const glowS = gem.collected && gem.pop >= 1 ? 0.0001 : Math.max(0.8, diamondDummy.scale.x) * 1.55;
+      diamondDummy.quaternion.copy(camera.quaternion);
+      diamondDummy.scale.setScalar(glowS);
+      diamondDummy.updateMatrix();
+      diamondGlow.setMatrixAt(i, diamondDummy.matrix);
+    }
   }
   diamondMesh.instanceMatrix.needsUpdate = true;
+  if (diamondGlow) diamondGlow.instanceMatrix.needsUpdate = true;
 }
 
 function updateDiamonds(dt, time) {
@@ -633,20 +604,43 @@ function buildDiamonds() {
   const extraHills = scatter(8, { minH: 12, maxH: 30, minNy: 0.8, spacing: 16, rampMargin: 4, shareOccupied: false, avoidSpawn: 8 });
   for (const p of extraHills) placeDiamond(p.x, p.y + 1.3, p.z, { points: 150 });
 
-  diamondMesh = new THREE.InstancedMesh(
-    diamondGeometry(),
-    new THREE.MeshStandardMaterial({
-      color: 0xc8ffff,
-      emissive: 0x3ad4ff,
-      emissiveIntensity: 1.35,
-      metalness: 0.25,
-      roughness: 0.12,
-    }),
-    Math.max(diamonds.length, 1)
-  );
+  const gemMat = new THREE.MeshPhysicalMaterial({
+    color: 0xff1e3c,
+    metalness: 0.08,
+    roughness: 0.045,
+    transmission: 0.78,
+    thickness: 0.62,
+    ior: 2.42,
+    reflectivity: 0.95,
+    clearcoat: 1,
+    clearcoatRoughness: 0.03,
+    attenuationColor: new THREE.Color(0xff0033),
+    attenuationDistance: 0.38,
+    emissive: new THREE.Color(0x7a0014),
+    emissiveIntensity: 0.42,
+    envMap: gemEnv,
+    envMapIntensity: 1.85,
+    flatShading: true,
+  });
+  diamondMesh = new THREE.InstancedMesh(diamondGeometry(), gemMat, Math.max(diamonds.length, 1));
   diamondMesh.castShadow = true;
   diamondMesh.frustumCulled = false;
   scene.add(diamondMesh);
+
+  diamondGlow = new THREE.InstancedMesh(
+    new THREE.PlaneGeometry(1.15, 1.15),
+    new THREE.MeshBasicMaterial({
+      map: gemGlowTexture(),
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      fog: false,
+    }),
+    Math.max(diamonds.length, 1)
+  );
+  diamondGlow.frustumCulled = false;
+  diamondGlow.renderOrder = 4;
+  scene.add(diamondGlow);
   syncDiamondInstances(0);
   refreshHud();
 }
@@ -776,7 +770,7 @@ function drawMinimap() {
   for (const gem of diamonds) {
     if (gem.collected) continue;
     const [du, dv] = toMap(gem.x, gem.z);
-    mctx.fillStyle = gem.sky ? '#7af2ff' : '#39d6ff';
+    mctx.fillStyle = gem.sky ? '#ff8aa0' : '#ff3b55';
     mctx.beginPath(); mctx.arc(du, dv, gem.sky ? 3.4 : 2.6, 0, Math.PI * 2); mctx.fill();
     mctx.strokeStyle = 'rgba(255,255,255,0.8)'; mctx.lineWidth = 1; mctx.stroke();
   }
@@ -804,9 +798,12 @@ function frame() {
   updatePlayer(dt / 2); updatePlayer(dt / 2);
   updateDiamonds(dt, clock.elapsedTime);
   updateTrampolines(dt);
-  tickWind(clock.elapsedTime);
+  tickNature(clock.elapsedTime);
+  clouds.update(clock.elapsedTime, camera);
+  ocean.update(clock.elapsedTime, sunDir);
+  if (groundCover) groundCover.update(clock.elapsedTime, camera.position, dt, terrainHeight);
   if (diamondMesh?.material) {
-    diamondMesh.material.emissiveIntensity = 0.7 + 0.35 * Math.sin(clock.elapsedTime * 6);
+    diamondMesh.material.emissiveIntensity = 0.32 + 0.22 * Math.sin(clock.elapsedTime * 5.2);
   }
 
   // sun/shadow camera follows the player, snapped to texels to avoid shimmering
@@ -815,16 +812,13 @@ function frame() {
   sun.position.copy(sun.target.position).addScaledVector(sunDir, 200);
   sun.target.updateMatrixWorld();
 
-  waterNormals.offset.x += dt * 0.004; waterNormals.offset.y += dt * 0.0025;
-  water.position.y = Math.sin(clock.elapsedTime * 0.6) * 0.04;
-
-  sky.position.copy(camera.position);
   renderer.render(scene, camera);
   drawMinimap();
   refreshHud();
 
   frames++; fpsT += rawDt;
   if (fpsT > 0.5) { fps = frames / fpsT; frames = 0; fpsT = 0;
+    if (!LOW && fps > 1 && fps < 26) applyLowQuality();
     if (DEBUG) hud.textContent = `${fps.toFixed(0)} fps   x ${player.pos.x.toFixed(0)}  z ${player.pos.z.toFixed(0)}  alt ${player.pos.y.toFixed(1)} m`; }
 }
 renderer.setAnimationLoop(frame);
@@ -858,8 +852,18 @@ window.game.teleport = (x, y, z) => {
   camera.position.set(x, y + EYE, z);
 };
 
+function applyLowQuality() {
+  renderer.setPixelRatio(1);
+  if (sun.shadow.mapSize.x > 1024) sun.shadow.mapSize.set(1024, 1024);
+}
+
 async function boot() {
-  vegStats = await plantIsland(scene, { scatter, addTrunk, rand });
+  vegStats = plantTrees(scene, { scatter, addTrunk, rand, renderer, LOW });
+  groundCover = createGroundCover(scene, {
+    terrainHeight, terrainNormalY, rand, LOW, spawn,
+  });
+  vegStats.grass = groundCover.grass;
+  vegStats.flowers = groundCover.flowers;
   stampTrees(vegStats.treePts);
   buildTrampolines();
   buildDiamonds();
@@ -868,10 +872,11 @@ async function boot() {
     bushes: vegStats.bushes,
     grass: vegStats.grass,
     flowers: vegStats.flowers,
-    models: vegStats.loaded,
+    models: vegStats.trees,
     diamonds: diamonds.length,
     trampolines: trampolines.length,
     ramps: ramps.length,
+    quality: LOW ? 'low' : 'high',
   };
   window.game.modelsLoaded = true;
   bootReady = true;

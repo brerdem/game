@@ -12,8 +12,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@dgreenheck/ez-tree": "^1.1.0",
     "simplex-noise": "^4.0.3",
-    "three": "^0.160.0"
+    "three": "^0.170.0"
   },
   "devDependencies": {
     "playwright": "1.48",

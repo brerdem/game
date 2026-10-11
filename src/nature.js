@@ -364,6 +364,7 @@ export function createGroundCover(scene, { terrainHeight, terrainNormalY, rand, 
   const grassCount = LOW ? 14000 : 36000;
   const flowerCount = LOW ? 380 : 820;
   const R = LOW ? 26 : 36;
+  const origin = spawn || { x: 0, z: 0 };
   const grassGeo = bladeGeometry();
   const grassMat = new THREE.MeshStandardMaterial({
     map: bladeTexture(),
@@ -380,7 +381,6 @@ export function createGroundCover(scene, { terrainHeight, terrainNormalY, rand, 
 
   const grass = new THREE.InstancedMesh(grassGeo, grassMat, grassCount);
   const col = new THREE.Color();
-  const origin = spawn || { x: 0, z: 0 };
   for (let i = 0; i < grassCount; i++) {
     const a = rand(0, Math.PI * 2);
     const r = Math.sqrt(rand(0, 1)) * R;

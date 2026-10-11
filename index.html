@@ -5,12 +5,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Island FPS</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #87b5d8; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-  canvas#game { display: block; }
-  #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(10, 25, 40, 0.45); cursor: pointer; z-index: 10; }
+  @font-face {
+    font-family: 'Luckiest Guy';
+    src: url('./fonts/luckiest-guy.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+  }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #6ea8d4; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  canvas#game { display: block; visibility: hidden; }
+  body.booted canvas#game { visibility: visible; }
+  #minimap, #game-hud, #crosshair { opacity: 0; }
+  body.booted #minimap, body.booted #game-hud, body.booted #crosshair { opacity: 1; }
+  #loader { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(180deg, #5b9bd4 0%, #87b8d8 55%, #c5d8ea 100%); z-index: 20; color: #fff; }
+  #loader.hidden { display: none; }
+  #loader h1 { font-family: 'Luckiest Guy', system-ui, sans-serif; font-size: clamp(48px, 9vw, 86px); margin: 0 0 10px; letter-spacing: 0.04em; text-shadow: 0 3px 0 #1b3d5c, 0 8px 18px rgba(0,0,0,0.28); }
+  #loader .sub { margin: 0 0 28px; opacity: 0.9; font-size: 16px; }
+  #loader-bar { width: min(420px, 70vw); height: 18px; background: rgba(255,255,255,0.28); border: 3px solid #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,0.2); }
+  #loader-fill { height: 100%; width: 0; background: linear-gradient(90deg, #2b7a4b, #5ad07a); transition: width 0.18s ease; }
+  #loader-pct { margin-top: 10px; font-family: 'Luckiest Guy', system-ui, sans-serif; font-size: 22px; text-shadow: 0 2px 0 #1b3d5c; }
+  #overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(10, 25, 40, 0.45); cursor: pointer; z-index: 10; }
+  #overlay.ready { display: flex; }
   #overlay.hidden { display: none; }
   #panel { background: rgba(255,255,255,0.92); color: #1c2b36; padding: 26px 34px; border-radius: 14px; max-width: 420px; box-shadow: 0 10px 40px rgba(0,0,0,0.35); text-align: center; }
-  #panel h1 { margin: 0 0 6px; font-size: 28px; }
+  #panel h1 { margin: 0 0 6px; font-size: 28px; font-family: 'Luckiest Guy', system-ui, sans-serif; }
   #panel p { margin: 6px 0 14px; color: #44555f; }
   #panel table { margin: 0 auto 16px; border-collapse: collapse; text-align: left; }
   #panel td { padding: 3px 10px; }
@@ -19,25 +37,43 @@
   #crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255,255,255,0.85); box-shadow: 0 0 2px rgba(0,0,0,0.8); pointer-events: none; z-index: 5; }
   #minimap { position: fixed; right: 16px; bottom: 16px; width: min(220px, 34vmin); height: min(220px, 34vmin); border-radius: 50%; border: 3px solid rgba(255,255,255,0.85); box-shadow: 0 4px 18px rgba(0,0,0,0.4); z-index: 6; pointer-events: none; }
   #hud { position: fixed; left: 12px; top: 10px; color: #fff; font-size: 12px; text-shadow: 0 1px 2px rgba(0,0,0,0.8); z-index: 6; pointer-events: none; white-space: pre; }
-  #game-hud { position: fixed; left: 14px; top: 12px; z-index: 7; pointer-events: none; }
-  .hud-card { background: rgba(12, 22, 34, 0.58); color: #f4fbff; padding: 10px 16px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.22); box-shadow: 0 8px 24px rgba(0,0,0,0.28); backdrop-filter: blur(8px); min-width: 196px; }
-  .hud-row { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; margin: 3px 0; font-variant-numeric: tabular-nums; }
-  .hud-row .label { color: #b7c8d4; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
-  .hud-row .value { font-size: 18px; font-weight: 700; }
-  .hud-row .gem { color: #ff5a6d; text-shadow: 0 0 10px rgba(255, 60, 80, 0.75); }
+  #game-hud { position: fixed; left: 18px; top: 10px; z-index: 7; pointer-events: none; font-family: 'Luckiest Guy', system-ui, sans-serif; }
+  .hud-row { margin: 0; line-height: 1.05; }
+  .hud-row .label { display: none; }
+  .hud-row .value {
+    color: #fff8e8;
+    font-size: clamp(34px, 5.6vw, 58px);
+    letter-spacing: 0.02em;
+    text-shadow:
+      -3px -3px 0 #1a1208, 3px -3px 0 #1a1208, -3px 3px 0 #1a1208, 3px 3px 0 #1a1208,
+      0 5px 0 #1a1208, 0 10px 16px rgba(0,0,0,0.35);
+  }
+  .hud-row .gem {
+    color: #ff3048;
+    font-size: clamp(26px, 4vw, 40px);
+    text-shadow:
+      -3px -3px 0 #3a0008, 3px -3px 0 #3a0008, -3px 3px 0 #3a0008, 3px 3px 0 #3a0008,
+      0 0 14px rgba(255, 40, 60, 0.55);
+  }
   #win { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(8, 18, 30, 0.55); z-index: 12; }
   #win.show { display: flex; }
   #win .panel { background: rgba(255,255,255,0.94); color: #1c2b36; padding: 28px 36px; border-radius: 16px; text-align: center; max-width: 420px; box-shadow: 0 12px 40px rgba(0,0,0,0.35); }
-  #win h2 { margin: 0 0 8px; font-size: 32px; }
+  #win h2 { margin: 0 0 8px; font-size: 32px; font-family: 'Luckiest Guy', system-ui, sans-serif; }
   #win p { margin: 6px 0; color: #44555f; }
   #win .again { display: inline-block; margin-top: 12px; background: #2b7a4b; color: #fff; padding: 10px 22px; border-radius: 8px; font-weight: 600; cursor: pointer; }
 </style>
 </head>
 <body>
+  <div id="loader">
+    <h1>Island</h1>
+    <p class="sub">Packing a picnic for two islands…</p>
+    <div id="loader-bar"><div id="loader-fill"></div></div>
+    <div id="loader-pct">0%</div>
+  </div>
   <div id="overlay">
     <div id="panel">
-      <h1>🏝️ Island</h1>
-      <p id="sub">Collect every ruby. Use trampolines for the high ones.</p>
+      <h1>Island</h1>
+      <p id="sub">Collect every ruby. Cross the vine bridge for the second island.</p>
       <table>
         <tr><td><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></td><td>Move</td></tr>
         <tr><td><kbd>Mouse</kbd></td><td>Look around</td></tr>
@@ -50,11 +86,9 @@
   </div>
   <div id="crosshair"></div>
   <div id="game-hud">
-    <div class="hud-card">
-      <div class="hud-row"><span class="label">Gems</span><span class="value gem" id="diamond-count">0 / 0</span></div>
-      <div class="hud-row"><span class="label">Score</span><span class="value" id="score-count">0</span></div>
-      <div class="hud-row"><span class="label">Time</span><span class="value" id="timer">00:00</span></div>
-    </div>
+    <div class="hud-row"><span class="label">Gems</span><span class="value gem" id="diamond-count">0 / 0</span></div>
+    <div class="hud-row"><span class="label">Score</span><span class="value" id="score-count">0</span></div>
+    <div class="hud-row"><span class="label">Time</span><span class="value" id="timer">00:00</span></div>
   </div>
   <div id="hud"></div>
   <div id="win">

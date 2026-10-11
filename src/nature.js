@@ -238,7 +238,7 @@ function makeTree(preset, seed, { LOW = false, leaves } = {}) {
   return tree;
 }
 
-export function plantTrees(scene, { scatter, addTrunk, rand, renderer, LOW }) {
+export async function plantTrees(scene, { scatter, addTrunk, rand, renderer, LOW, onProgress, island2 }) {
   const specs = [
     { preset: 'Oak Medium', count: LOW ? 12 : 24, minH: 3.0, maxH: 18, spacing: 13, h: 16.5 },
     { preset: 'Oak Small', count: LOW ? 10 : 18, minH: 2.6, maxH: 16, spacing: 10, h: 10.5 },
@@ -246,9 +246,12 @@ export function plantTrees(scene, { scatter, addTrunk, rand, renderer, LOW }) {
     { preset: 'Aspen Medium', count: LOW ? 8 : 16, minH: 3.4, maxH: 20, spacing: 13, h: 16.0 },
     { preset: 'Pine Medium', count: LOW ? 12 : 22, minH: 6.5, maxH: 32, spacing: 11, h: 20.0 },
   ];
+  const yieldFrame = () => new Promise((r) => setTimeout(r, 0));
+  const totalSteps = specs.length + 2;
   let trees = 0;
   const treePts = [];
-  specs.forEach((spec, i) => {
+  for (let i = 0; i < specs.length; i++) {
+    const spec = specs[i];
     const pts = scatter(spec.count, {
       minH: spec.minH, maxH: spec.maxH, minNy: 0.86, spacing: spec.spacing, rampMargin: 6, avoidSpawn: 10,
     });
@@ -268,7 +271,25 @@ export function plantTrees(scene, { scatter, addTrunk, rand, renderer, LOW }) {
       instanceImpostors(scene, info, far, { rand, targetH: spec.h * 0.95 });
       trees += far.length;
     }
-  });
+    onProgress?.((i + 1) / totalSteps);
+    await yieldFrame();
+  }
+
+  if (island2) {
+    const extra = scatter(LOW ? 7 : 12, {
+      around: { x: island2.x, z: island2.z, r: island2.r * 0.78 },
+      minH: 2.5, maxH: 15, minNy: 0.84, spacing: 8, rampMargin: 3, avoidSpawn: 0,
+    });
+    const proto = makeTree('Oak Small', 77, { LOW });
+    instanceFromTree(scene, proto, extra, {
+      rand,
+      targetH: 11,
+      onEach: (p, r) => { addTrunk(p.x, p.z, Math.max(0.24, r)); treePts.push(p); },
+    });
+    trees += extra.length;
+  }
+  onProgress?.((specs.length + 1) / totalSteps);
+  await yieldFrame();
 
   let bushes = 0;
   ['Bush 1', 'Bush 2', 'Bush 3'].forEach((preset, i) => {
@@ -277,6 +298,7 @@ export function plantTrees(scene, { scatter, addTrunk, rand, renderer, LOW }) {
     instanceFromTree(scene, proto, pts, { sink: 0.06, targetH: 1.55 + i * 0.2, scaleJitter: 0.28, rand });
     bushes += pts.length;
   });
+  onProgress?.(1);
 
   return { trees, bushes, treePts };
 }

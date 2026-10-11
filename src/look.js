@@ -3,7 +3,8 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { Water } from 'three/addons/objects/Water.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
-const loader = new THREE.TextureLoader();
+export const loadManager = new THREE.LoadingManager();
+const loader = new THREE.TextureLoader(loadManager);
 
 function loadMap(url, { color = false, wrap = true, repeat = 1 } = {}) {
   const tex = loader.load(url);
@@ -206,6 +207,75 @@ export function createClouds(scene, sunDir) {
     scene.add(mesh);
     layers.push(mesh);
   }
+  const puffC = document.createElement('canvas');
+  puffC.width = puffC.height = 256;
+  const pctx = puffC.getContext('2d');
+  const blob = (x, y, r, a) => {
+    const g = pctx.createRadialGradient(x, y, r * 0.08, x, y, r);
+    g.addColorStop(0, `rgba(255,255,255,${a})`);
+    g.addColorStop(0.45, `rgba(252,253,255,${a * 0.72})`);
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    pctx.fillStyle = g;
+    pctx.beginPath();
+    pctx.arc(x, y, r, 0, Math.PI * 2);
+    pctx.fill();
+  };
+  blob(128, 176, 82, 0.98);
+  blob(72, 158, 70, 0.92);
+  blob(186, 154, 74, 0.94);
+  blob(104, 118, 64, 0.88);
+  blob(158, 112, 62, 0.86);
+  blob(128, 86, 54, 0.78);
+  blob(54, 132, 48, 0.7);
+  blob(204, 128, 50, 0.72);
+  const puffTex = new THREE.CanvasTexture(puffC);
+  puffTex.colorSpace = THREE.SRGBColorSpace;
+  const puffMat = new THREE.MeshBasicMaterial({
+    map: puffTex,
+    transparent: true,
+    depthWrite: false,
+    fog: false,
+    side: THREE.DoubleSide,
+  });
+  puffMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uSun = uniforms.uSun;
+    shader.vertexShader = `
+      varying vec2 vUv2;
+      ${shader.vertexShader}`.replace(
+      '#include <uv_vertex>',
+      `#include <uv_vertex>
+      vUv2 = uv;`
+    );
+    shader.fragmentShader = `
+      uniform vec3 uSun;
+      varying vec2 vUv2;
+      ${shader.fragmentShader}`.replace(
+      '#include <map_fragment>',
+      `#include <map_fragment>
+      float lit = 0.42 + 0.58 * vUv2.y;
+      float sun = 0.16 * max(uSun.y, 0.0);
+      diffuseColor.rgb = mix(vec3(0.86, 0.90, 0.96), vec3(1.0, 1.0, 1.0), clamp(lit + sun, 0.0, 1.0));
+      diffuseColor.rgb *= sampledDiffuseColor.rgb;`
+    );
+  };
+  const dummy = new THREE.Object3D();
+  const PUFFS = 36;
+  const puffs = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 0.68), puffMat, PUFFS);
+  const puffMeta = [];
+  for (let i = 0; i < PUFFS; i++) {
+    const a = (i / PUFFS) * Math.PI * 2 + i * 0.21;
+    const r = 55 + (i % 9) * 34;
+    puffMeta.push({
+      a, r,
+      y: 78 + (i % 6) * 20,
+      s: 48 + (i % 7) * 16,
+    });
+  }
+  puffs.frustumCulled = false;
+  puffs.layers.set(1);
+  puffs.renderOrder = -1;
+  scene.add(puffs);
+
   return {
     update(time, cam) {
       uniforms.uTime.value = time;
@@ -213,6 +283,16 @@ export function createClouds(scene, sunDir) {
         m.position.x = cam.position.x;
         m.position.z = cam.position.z;
       }
+      for (let i = 0; i < PUFFS; i++) {
+        const p = puffMeta[i];
+        const ang = p.a + time * 0.008;
+        dummy.position.set(cam.position.x + Math.cos(ang) * p.r, p.y, cam.position.z + Math.sin(ang) * p.r);
+        dummy.lookAt(cam.position.x, p.y, cam.position.z);
+        dummy.scale.setScalar(p.s);
+        dummy.updateMatrix();
+        puffs.setMatrixAt(i, dummy.matrix);
+      }
+      puffs.instanceMatrix.needsUpdate = true;
     },
   };
 }

@@ -14,7 +14,7 @@ page.on('console', (m) => { if (m.type() === 'error') errors.push(`[${m.type()}]
 page.on('pageerror', (e) => errors.push('[pageerror] ' + e.message));
 page.on('requestfailed', (req) => {
   const u = req.url();
-  if (/\.(glb|gltf|js|css|webp|jpg|png|wasm)$/i.test(u)) {
+  if (/\.(glb|gltf|js|css|webp|jpg|png|wasm|woff2)$/i.test(u)) {
     errors.push(`[requestfailed] ${u} ${req.failure()?.errorText || ''}`);
     failed.push(u);
   }
@@ -26,7 +26,14 @@ page.on('response', (res) => {
   }
 });
 
-await page.goto(url, { waitUntil: 'load' });
+await page.goto(url, { waitUntil: 'domcontentloaded' });
+if (extraDir) {
+  mkdirSync(extraDir, { recursive: true });
+  await page.waitForSelector('#loader:not(.hidden)', { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(120);
+  await page.screenshot({ path: `${extraDir}/loading.png`, timeout: 60000 });
+  console.log('wrote', `${extraDir}/loading.png`);
+}
 await page.waitForFunction(() => window.__ready === true && window.game?.modelsLoaded === true, null, { timeout: 180000 });
 await page.waitForTimeout(2200);
 
@@ -46,6 +53,30 @@ console.log(JSON.stringify(info, null, 2));
 if (!info.counts?.trees || info.counts.trees < 20 || info.counts.diamonds < 20 || info.counts.trampolines < 4 || !info.counts.grass) {
   errors.push(`[assert] unexpected counts ${JSON.stringify(info.counts)}`);
 }
+const extras = await page.evaluate(() => {
+  const i2 = game.ISLAND2 || { x: 298, z: 32, r: 78 };
+  const gems = (game.diamonds || []).filter((d) => Math.hypot(d.x - i2.x, d.z - i2.z) < i2.r + 6);
+  const trees = (game.treePts || []).filter((p) => Math.hypot(p.x - i2.x, p.z - i2.z) < i2.r + 6);
+  const mid = game.bridge
+    ? { x: (game.bridge.a.x + game.bridge.b.x) / 2, z: (game.bridge.a.z + game.bridge.b.z) / 2 }
+    : null;
+  const bh = mid ? game.groundHeight(mid.x, mid.z) : null;
+  return {
+    island2Gems: gems.length,
+    island2Trees: trees.length,
+    hasBridge: !!game.bridge,
+    bridgeLen: game.bridge?.L || 0,
+    bridgeMidH: bh,
+    hudFont: getComputedStyle(document.getElementById('score-count')).fontFamily,
+    loaderHidden: document.getElementById('loader').classList.contains('hidden'),
+  };
+});
+console.log('extras', JSON.stringify(extras));
+if (!extras.hasBridge || extras.bridgeLen < 20) errors.push(`[assert] missing vine bridge ${JSON.stringify(extras)}`);
+if (extras.island2Gems < 3) errors.push(`[assert] too few island-2 gems ${extras.island2Gems}`);
+if (extras.island2Trees < 3) errors.push(`[assert] too few island-2 trees ${extras.island2Trees}`);
+if (!extras.loaderHidden) errors.push('[assert] loader still visible after ready');
+if (extras.bridgeMidH != null && extras.bridgeMidH < 0) errors.push(`[assert] bridge mid not walkable ${extras.bridgeMidH}`);
 
 const shots = [];
 const save = async (path) => {
@@ -156,7 +187,59 @@ if (extraDir) {
   });
   await page.waitForTimeout(350);
   await save(`${extraDir}/spawn_forest.png`);
-  console.log('placed', JSON.stringify({ shore, gem, pad }));
+
+  const br = await page.evaluate(() => {
+    const b = game.bridge;
+    if (!b) return null;
+    const mx = (b.a.x + b.b.x) / 2, mz = (b.a.z + b.b.z) / 2;
+    return {
+      ax: b.a.x, ay: b.a.y, az: b.a.z,
+      bx: b.b.x, by: b.b.y, bz: b.b.z,
+      mx, mz, my: game.groundHeight(mx, mz),
+      L: b.L,
+    };
+  });
+  if (br) {
+    const sideX = -(br.bz - br.az), sideZ = (br.bx - br.ax);
+    const sl = Math.hypot(sideX, sideZ) || 1;
+    const camX = br.mx + (sideX / sl) * 42;
+    const camZ = br.mz + (sideZ / sl) * 42;
+    await lookAt(br.mx, br.my + 2, br.mz, camX, br.my + 18, camZ, -0.38);
+    await save(`${extraDir}/vine_bridge.png`);
+    await page.screenshot({ path: `${extraDir}/hud.png`, timeout: 60000 });
+    console.log('wrote', `${extraDir}/hud.png`);
+
+    const walk = await page.evaluate(({ br }) => {
+      const x0 = br.ax + (br.bx - br.ax) * 0.18;
+      const z0 = br.az + (br.bz - br.az) * 0.18;
+      const y0 = game.groundHeight(x0, z0);
+      game.teleport(x0, y0, z0);
+      const yaw = Math.atan2(br.bx - br.ax, br.bz - br.az) + Math.PI;
+      game.setYaw(yaw);
+      game.simulate(4.5, { KeyW: true });
+      const p = game.player.pos;
+      const on = game.groundHeight(p.x, p.z);
+      return { x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), on: +on.toFixed(2) };
+    }, { br });
+    console.log('bridge walk', JSON.stringify(walk));
+    if (walk.y < 0.4) errors.push(`[assert] fell off bridge while walking ${JSON.stringify(walk)}`);
+
+    const drown = await page.evaluate(({ br }) => {
+      const mx = br.mx, mz = br.mz;
+      const sideX = -(br.bz - br.az), sideZ = (br.bx - br.ax);
+      const sl = Math.hypot(sideX, sideZ) || 1;
+      game.teleport(mx + (sideX / sl) * 4.5, 2.2, mz + (sideZ / sl) * 4.5);
+      for (let i = 0; i < 180; i++) game.simulate(1 / 60, {});
+      const p = game.player.pos;
+      return { x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), terrain: +game.terrainHeight(p.x, p.z).toFixed(2) };
+    }, { br });
+    console.log('drown/respawn', JSON.stringify(drown));
+    if (drown.terrain < 0.8) errors.push(`[assert] drown did not respawn on shore ${JSON.stringify(drown)}`);
+  } else {
+    errors.push('[assert] no bridge for shots');
+  }
+
+  console.log('placed', JSON.stringify({ shore, gem, pad, br }));
 }
 
 if (process.argv.includes('move')) {

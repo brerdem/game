@@ -196,11 +196,11 @@ if (extraDir) {
   if (br) {
     const sideX = -(br.bz - br.az), sideZ = (br.bx - br.ax);
     const sl = Math.hypot(sideX, sideZ) || 1;
-    const camX = br.ax + (br.bx - br.ax) * 0.08 + (sideX / sl) * 6.5;
-    const camZ = br.az + (br.bz - br.az) * 0.08 + (sideZ / sl) * 6.5;
-    const lookX = br.ax + (br.bx - br.ax) * 0.72;
-    const lookZ = br.az + (br.bz - br.az) * 0.72;
-    await lookAt(lookX, Math.max(br.by, 1.2), lookZ, camX, br.ay + 1.6, camZ, -0.06);
+    const camX = br.ax + (br.bx - br.ax) * -0.06 + (sideX / sl) * 7.2;
+    const camZ = br.az + (br.bz - br.az) * -0.06 + (sideZ / sl) * 7.2;
+    const lookX = br.ax + (br.bx - br.ax) * 0.62;
+    const lookZ = br.az + (br.bz - br.az) * 0.62;
+    await lookAt(lookX, Math.max(br.my, 1.4), lookZ, camX, br.ay + 1.35, camZ, -0.08);
     await save(`${extraDir}/vine_bridge.png`);
     await page.evaluate(() => {
       const p = game.spawn;

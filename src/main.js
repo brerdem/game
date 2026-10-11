@@ -270,9 +270,9 @@ function findShoreToward(from, to, landMin = 2.6) {
 {
   const aShore = findShoreToward({ x: 0, z: 0 }, ISLAND2, 2.75);
   const bShore = findShoreToward({ x: ISLAND2.x, z: ISLAND2.z }, { x: 0, z: 0 }, 2.75);
-  const y0 = aShore.y + 0.2, y1 = bShore.y + 0.2;
+  const y0 = Math.max(aShore.y, 2.4) + 0.45, y1 = Math.max(bShore.y, 2.4) + 0.45;
   const span = Math.hypot(bShore.x - aShore.x, bShore.z - aShore.z);
-  const sag = Math.min(Math.max(0.85, Math.min(y0, y1) - 0.7), span * 0.09);
+  const sag = Math.min(Math.max(1.1, Math.min(y0, y1) - 0.75), span * 0.12);
   bridge = createVineBridge(scene, {
     a: { x: aShore.x, y: y0, z: aShore.z },
     b: { x: bShore.x, y: y1, z: bShore.z },

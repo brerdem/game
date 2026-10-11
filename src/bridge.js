@@ -62,11 +62,11 @@ export function createVineBridge(scene, { a, b, sag = 5.2 }) {
 
     if (i % 2 === 0) {
       for (const s of [-1, 1]) {
-        const railY = catenaryY(t, y0, y1, sag) + 0.95;
+        const railY = catenaryY(t, y0, y1, sag) + 1.05;
         const px = a.x + dirx * t * L + sideX * (W * 0.52) * s;
         const pz = a.z + dirz * t * L + sideZ * (W * 0.52) * s;
-        const drop = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.95, 5), vine);
-        drop.position.set(px, railY - 0.42, pz);
+        const drop = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.035, 1.05, 5), vine);
+        drop.position.set(px, railY - 0.48, pz);
         hanging.add(drop);
       }
     }

@@ -1088,7 +1088,6 @@ async function boot() {
   window.game.showMenu = showMenu;
   window.game.exitGame = exitGame;
   window.game.applyMenuCamera = applyMenuCamera;
-  window.game.backend = backendInfo;
   window.game.modelsLoaded = true;
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   if (loaderEl) loaderEl.classList.add('hidden');
@@ -1098,7 +1097,6 @@ async function boot() {
   if (DEBUG) playStarted = true;
   window.__ready = true;
 }
-window.game.backend = backendInfo;
 start().catch((err) => {
   console.error(err);
   window.__ready = true;

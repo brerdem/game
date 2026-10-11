@@ -19,13 +19,25 @@
   #crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255,255,255,0.85); box-shadow: 0 0 2px rgba(0,0,0,0.8); pointer-events: none; z-index: 5; }
   #minimap { position: fixed; right: 16px; bottom: 16px; width: min(220px, 34vmin); height: min(220px, 34vmin); border-radius: 50%; border: 3px solid rgba(255,255,255,0.85); box-shadow: 0 4px 18px rgba(0,0,0,0.4); z-index: 6; pointer-events: none; }
   #hud { position: fixed; left: 12px; top: 10px; color: #fff; font-size: 12px; text-shadow: 0 1px 2px rgba(0,0,0,0.8); z-index: 6; pointer-events: none; white-space: pre; }
+  #game-hud { position: fixed; left: 14px; top: 12px; z-index: 7; pointer-events: none; }
+  .hud-card { background: rgba(12, 22, 34, 0.58); color: #f4fbff; padding: 10px 16px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.22); box-shadow: 0 8px 24px rgba(0,0,0,0.28); backdrop-filter: blur(8px); min-width: 196px; }
+  .hud-row { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; margin: 3px 0; font-variant-numeric: tabular-nums; }
+  .hud-row .label { color: #b7c8d4; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+  .hud-row .value { font-size: 18px; font-weight: 700; }
+  .hud-row .gem { color: #5ce7ff; text-shadow: 0 0 10px rgba(80, 220, 255, 0.8); }
+  #win { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(8, 18, 30, 0.55); z-index: 12; }
+  #win.show { display: flex; }
+  #win .panel { background: rgba(255,255,255,0.94); color: #1c2b36; padding: 28px 36px; border-radius: 16px; text-align: center; max-width: 420px; box-shadow: 0 12px 40px rgba(0,0,0,0.35); }
+  #win h2 { margin: 0 0 8px; font-size: 32px; }
+  #win p { margin: 6px 0; color: #44555f; }
+  #win .again { display: inline-block; margin-top: 12px; background: #2b7a4b; color: #fff; padding: 10px 22px; border-radius: 8px; font-weight: 600; cursor: pointer; }
 </style>
 </head>
 <body>
   <div id="overlay">
     <div id="panel">
       <h1>🏝️ Island</h1>
-      <p id="sub">Explore a procedurally generated island.</p>
+      <p id="sub">Collect every diamond. Use trampolines for the high ones.</p>
       <table>
         <tr><td><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></td><td>Move</td></tr>
         <tr><td><kbd>Mouse</kbd></td><td>Look around</td></tr>
@@ -37,7 +49,21 @@
     </div>
   </div>
   <div id="crosshair"></div>
+  <div id="game-hud">
+    <div class="hud-card">
+      <div class="hud-row"><span class="label">Gems</span><span class="value gem" id="diamond-count">0 / 0</span></div>
+      <div class="hud-row"><span class="label">Score</span><span class="value" id="score-count">0</span></div>
+      <div class="hud-row"><span class="label">Time</span><span class="value" id="timer">00:00</span></div>
+    </div>
+  </div>
   <div id="hud"></div>
+  <div id="win">
+    <div class="panel">
+      <h2>You win</h2>
+      <p id="win-stats">All diamonds collected.</p>
+      <div class="again" id="again">Click to play again</div>
+    </div>
+  </div>
   <canvas id="minimap" width="440" height="440"></canvas>
   <script type="module" src="./src/main.js"></script>
 </body>

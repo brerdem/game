@@ -259,8 +259,8 @@ function shoreFromCenter(cx, cz, ux, uz, maxR, landMin = 0.9) {
 {
   const gap = Math.hypot(ISLAND2.x, ISLAND2.z) || 1;
   const ux = ISLAND2.x / gap, uz = ISLAND2.z / gap;
-  const aShore = shoreFromCenter(0, 0, ux, uz, ISLAND_R + 36, 0.9);
-  const bShore = shoreFromCenter(ISLAND2.x, ISLAND2.z, -ux, -uz, ISLAND2.r + 28, 0.9);
+  const aShore = shoreFromCenter(0, 0, ux, uz, ISLAND_R + 36, 0.22);
+  const bShore = shoreFromCenter(ISLAND2.x, ISLAND2.z, -ux, -uz, ISLAND2.r + 28, 0.22);
   const y0 = Math.max(aShore.y, 2.4) + 0.45, y1 = Math.max(bShore.y, 2.4) + 0.45;
   const span = Math.hypot(bShore.x - aShore.x, bShore.z - aShore.z);
   const sag = Math.min(Math.max(1.1, Math.min(y0, y1) - 0.75), span * 0.12);

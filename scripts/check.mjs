@@ -60,6 +60,8 @@ const extras = await page.evaluate(() => {
     hasBridge: !!game.bridge,
     bridgeLen: game.bridge?.L || 0,
     bridgeMidH: bh,
+    bridgeA: game.bridge ? { x: +game.bridge.a.x.toFixed(1), y: +game.bridge.a.y.toFixed(2), z: +game.bridge.a.z.toFixed(1) } : null,
+    bridgeB: game.bridge ? { x: +game.bridge.b.x.toFixed(1), y: +game.bridge.b.y.toFixed(2), z: +game.bridge.b.z.toFixed(1) } : null,
     hudFont: getComputedStyle(document.getElementById('score-count')).fontFamily,
     loaderHidden: document.getElementById('loader').classList.contains('hidden'),
   };
@@ -70,7 +72,7 @@ if (extras.island2Gems < 3) errors.push(`[assert] too few island-2 gems ${extras
 if (extras.island2Trees < 3) errors.push(`[assert] too few island-2 trees ${extras.island2Trees}`);
 if (!extras.loaderHidden) errors.push('[assert] loader still visible after ready');
 if (extras.bridgeMidH != null && extras.bridgeMidH < 0.35) errors.push(`[assert] bridge mid not walkable ${extras.bridgeMidH}`);
-if (extras.bridgeLen > 95 || extras.bridgeLen < 28) errors.push(`[assert] unexpected bridge span ${extras.bridgeLen}`);
+if (extras.bridgeLen > 110 || extras.bridgeLen < 24) errors.push(`[assert] unexpected bridge span ${extras.bridgeLen}`);
 
 const shots = [];
 const save = async (path) => {

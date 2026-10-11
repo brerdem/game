@@ -460,10 +460,10 @@ function gemGlowTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = 64;
   const ctx = c.getContext('2d');
-  const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 30);
-  g.addColorStop(0, 'rgba(255,70,90,0.85)');
-  g.addColorStop(0.4, 'rgba(200,10,40,0.28)');
-  g.addColorStop(1, 'rgba(120,0,20,0)');
+  const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 28);
+  g.addColorStop(0, 'rgba(90,0,12,0.55)');
+  g.addColorStop(0.35, 'rgba(70,0,10,0.22)');
+  g.addColorStop(1, 'rgba(30,0,4,0)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 64, 64);
   const t = new THREE.CanvasTexture(c);
@@ -502,7 +502,7 @@ function syncDiamondInstances(time) {
     diamondDummy.updateMatrix();
     diamondMesh.setMatrixAt(i, diamondDummy.matrix);
     if (diamondGlow) {
-      const glowS = gem.collected && gem.pop >= 1 ? 0.0001 : Math.max(0.8, diamondDummy.scale.x) * 1.55;
+      const glowS = gem.collected && gem.pop >= 1 ? 0.0001 : Math.max(0.55, diamondDummy.scale.x) * 1.05;
       diamondDummy.quaternion.copy(camera.quaternion);
       diamondDummy.scale.setScalar(glowS);
       diamondDummy.updateMatrix();
@@ -605,21 +605,21 @@ function buildDiamonds() {
   for (const p of extraHills) placeDiamond(p.x, p.y + 1.3, p.z, { points: 150 });
 
   const gemMat = new THREE.MeshPhysicalMaterial({
-    color: 0xd40028,
-    metalness: 0.12,
-    roughness: 0.06,
-    transmission: software ? 0.08 : 0.58,
-    thickness: 0.62,
+    color: 0x6b0014,
+    metalness: 0.05,
+    roughness: 0.08,
+    transmission: software ? 0.0 : 0.32,
+    thickness: 0.85,
     ior: 2.42,
-    reflectivity: 0.95,
+    reflectivity: 0.7,
     clearcoat: 1,
-    clearcoatRoughness: 0.03,
-    attenuationColor: new THREE.Color(0xff0033),
-    attenuationDistance: 0.38,
-    emissive: new THREE.Color(0xc40022),
-    emissiveIntensity: 0.7,
+    clearcoatRoughness: 0.05,
+    attenuationColor: new THREE.Color(0x6a0014),
+    attenuationDistance: 0.14,
+    emissive: new THREE.Color(0x3d000c),
+    emissiveIntensity: 0.85,
     envMap: gemEnv,
-    envMapIntensity: 1.85,
+    envMapIntensity: software ? 0.35 : 0.55,
     flatShading: true,
   });
   diamondMesh = new THREE.InstancedMesh(diamondGeometry(), gemMat, Math.max(diamonds.length, 1));
@@ -628,7 +628,7 @@ function buildDiamonds() {
   scene.add(diamondMesh);
 
   diamondGlow = new THREE.InstancedMesh(
-    new THREE.PlaneGeometry(1.15, 1.15),
+    new THREE.PlaneGeometry(0.72, 0.72),
     new THREE.MeshBasicMaterial({
       map: gemGlowTexture(),
       transparent: true,
@@ -803,7 +803,7 @@ function frame() {
   ocean.update(clock.elapsedTime, sunDir);
   if (groundCover) groundCover.update(clock.elapsedTime, camera.position, dt, terrainHeight);
   if (diamondMesh?.material) {
-    diamondMesh.material.emissiveIntensity = 0.32 + 0.22 * Math.sin(clock.elapsedTime * 5.2);
+    diamondMesh.material.emissiveIntensity = 0.72 + 0.16 * Math.sin(clock.elapsedTime * 4.4);
   }
 
   // sun/shadow camera follows the player, snapped to texels to avoid shimmering
@@ -860,7 +860,7 @@ function applyLowQuality() {
 async function boot() {
   vegStats = plantTrees(scene, { scatter, addTrunk, rand, renderer, LOW });
   groundCover = createGroundCover(scene, {
-    terrainHeight, terrainNormalY, rand, LOW, spawn,
+    terrainHeight, terrainNormalY, rand, LOW, spawn, heightTex, WORLD,
   });
   vegStats.grass = groundCover.grass;
   vegStats.flowers = groundCover.flowers;

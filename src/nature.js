@@ -305,7 +305,61 @@ function flowerGeometry() {
   return mergeGeometries([a, b]);
 }
 
-export function createGroundCover(scene, { terrainHeight, terrainNormalY, rand, LOW, spawn }) {
+function applyTerrainWrap(mat, { R, heightTex, WORLD, minH = 2.05, wind = 0.12 }) {
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = { value: 0 };
+    shader.uniforms.uCam = { value: new THREE.Vector3() };
+    shader.uniforms.uR = { value: R };
+    shader.uniforms.tHeight = { value: heightTex };
+    shader.uniforms.uWorld = { value: WORLD };
+    shader.uniforms.uMinH = { value: minH };
+    leafWind.push(shader);
+    mat.userData.uCam = shader.uniforms.uCam;
+    shader.vertexShader = `
+      uniform float uTime;
+      uniform vec3 uCam;
+      uniform float uR;
+      uniform sampler2D tHeight;
+      uniform float uWorld;
+      uniform float uMinH;
+      varying float vFade;
+      ${shader.vertexShader}`.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+      #ifdef USE_INSTANCING
+      vec3 inst = instanceMatrix[3].xyz;
+      vec2 rel = inst.xz - uCam.xz;
+      rel -= uR * 2.0 * floor((rel + uR) / (uR * 2.0));
+      vec2 wxz = uCam.xz + rel;
+      vec2 huv = wxz / uWorld + 0.5;
+      float terrainH = texture2D(tHeight, huv).r * 40.0 - 8.0;
+      float e = 4.0 / uWorld;
+      float hL = texture2D(tHeight, huv + vec2(-e, 0.0)).r * 40.0 - 8.0;
+      float hR = texture2D(tHeight, huv + vec2( e, 0.0)).r * 40.0 - 8.0;
+      float hD = texture2D(tHeight, huv + vec2(0.0, -e)).r * 40.0 - 8.0;
+      float hU = texture2D(tHeight, huv + vec2(0.0,  e)).r * 40.0 - 8.0;
+      float ny = 8.0 / length(vec3(hR - hL, 8.0, hU - hD));
+      float land = step(uMinH, terrainH) * step(0.80, ny);
+      float dist = length(rel);
+      vFade = (1.0 - smoothstep(uR * 0.55, uR * 0.92, dist)) * land;
+      vec3 world = vec3(wxz.x, mix(-80.0, terrainH, land), wxz.y);
+      float phase = inst.x * 0.4 + inst.z * 0.33;
+      float hgt = transformed.y;
+      transformed.x += sin(uTime * 2.05 + phase) * ${wind.toFixed(3)} * hgt * hgt;
+      transformed.z += cos(uTime * 1.65 + phase) * ${(wind * 0.75).toFixed(3)} * hgt * hgt;
+      transformed += world - inst;
+      #endif`
+    );
+    shader.fragmentShader = `varying float vFade;\n${shader.fragmentShader}`.replace(
+      '#include <dithering_fragment>',
+      `#include <dithering_fragment>
+      gl_FragColor.a *= vFade;
+      if (gl_FragColor.a < 0.08) discard;`
+    );
+  };
+}
+
+export function createGroundCover(scene, { terrainHeight, terrainNormalY, rand, LOW, spawn, heightTex, WORLD }) {
   const grassCount = LOW ? 14000 : 36000;
   const flowerCount = LOW ? 380 : 820;
   const R = LOW ? 26 : 36;
@@ -318,43 +372,9 @@ export function createGroundCover(scene, { terrainHeight, terrainNormalY, rand, 
     side: THREE.DoubleSide,
     alphaTest: 0.35,
   });
-  grassMat.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = { value: 0 };
-    shader.uniforms.uCam = { value: new THREE.Vector3() };
-    shader.uniforms.uR = { value: R };
-    leafWind.push(shader);
-    grassMat.userData.uCam = shader.uniforms.uCam;
-    shader.vertexShader = `
-      uniform float uTime;
-      uniform vec3 uCam;
-      uniform float uR;
-      varying float vFade;
-      ${shader.vertexShader}`.replace(
-      '#include <begin_vertex>',
-      `#include <begin_vertex>
-      #ifdef USE_INSTANCING
-      vec3 inst = instanceMatrix[3].xyz;
-      vec2 rel = inst.xz - uCam.xz;
-      rel -= uR * 2.0 * floor((rel + uR) / (uR * 2.0));
-      vec3 world = vec3(uCam.x + rel.x, inst.y, uCam.z + rel.y);
-      float dist = length(rel);
-      vFade = 1.0 - smoothstep(uR * 0.58, uR, dist);
-      float phase = inst.x * 0.4 + inst.z * 0.33;
-      float h = transformed.y;
-      transformed.x += sin(uTime * 2.05 + phase) * 0.13 * h * h;
-      transformed.z += cos(uTime * 1.65 + phase) * 0.1 * h * h;
-      transformed += world - inst;
-      #endif`
-    );
-    shader.fragmentShader = `varying float vFade;\n${shader.fragmentShader}`.replace(
-      '#include <dithering_fragment>',
-      `#include <dithering_fragment>
-      gl_FragColor.a *= vFade;
-      if (gl_FragColor.a < 0.06) discard;`
-    );
-  };
+  applyTerrainWrap(grassMat, { R, heightTex, WORLD, minH: 2.05, wind: 0.12 });
   grassMat.transparent = true;
-  grassMat.customProgramCacheKey = () => 'wrap-grass-v2';
+  grassMat.customProgramCacheKey = () => 'wrap-grass-v4';
 
   const grass = new THREE.InstancedMesh(grassGeo, grassMat, grassCount);
   const col = new THREE.Color();
@@ -385,6 +405,9 @@ export function createGroundCover(scene, { terrainHeight, terrainNormalY, rand, 
     side: THREE.DoubleSide,
     alphaTest: 0.3,
   });
+  applyTerrainWrap(flMat, { R, heightTex, WORLD, minH: 2.05, wind: 0.04 });
+  flMat.transparent = true;
+  flMat.customProgramCacheKey = () => 'wrap-flower-v4';
   const flowers = new THREE.InstancedMesh(flowerGeometry(), flMat, flowerCount);
   const fcol = new THREE.Color();
   const FCOLS = [0xfff4a3, 0xffe9f2, 0xc5b7ff, 0xffffff, 0xffd27a];
@@ -405,50 +428,12 @@ export function createGroundCover(scene, { terrainHeight, terrainNormalY, rand, 
   flowers.layers.set(1);
   scene.add(flowers);
 
-  const m4 = new THREE.Matrix4();
-  const pos = new THREE.Vector3();
-  const quat = new THREE.Quaternion();
-  const scl = new THREE.Vector3();
-
-  function snapY(mesh, count, cam, heightFn, start = 0, n = count) {
-    const end = Math.min(count, start + n);
-    for (let i = start; i < end; i++) {
-      mesh.getMatrixAt(i, m4);
-      m4.decompose(pos, quat, scl);
-      let relx = pos.x - cam.x, relz = pos.z - cam.z;
-      relx -= R * 2 * Math.floor((relx + R) / (R * 2));
-      relz -= R * 2 * Math.floor((relz + R) / (R * 2));
-      const wx = cam.x + relx, wz = cam.z + relz;
-      const h = heightFn(wx, wz);
-      const ny = terrainNormalY(wx, wz);
-      if (h < 1.55 || ny < 0.78) pos.y = -20;
-      else pos.y = h;
-      pos.x = wx;
-      pos.z = wz;
-      dummy.position.copy(pos);
-      dummy.quaternion.copy(quat);
-      dummy.scale.copy(scl);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
-    }
-    mesh.instanceMatrix.needsUpdate = true;
-  }
-
-  let cursor = 0;
-  const CHUNK = LOW ? 3500 : 5000;
-  const cam0 = new THREE.Vector3(origin.x, 0, origin.z);
-  snapY(grass, grassCount, cam0, terrainHeight);
-  snapY(flowers, flowerCount, cam0, terrainHeight);
-
   return {
     grass: grassCount,
     flowers: flowerCount,
-    update(time, cam, dt, heightFn) {
+    update(time, cam) {
       if (grassMat.userData.uCam) grassMat.userData.uCam.value.copy(cam);
-      snapY(grass, grassCount, cam, heightFn, cursor, CHUNK);
-      if (cursor === 0) snapY(flowers, flowerCount, cam, heightFn);
-      cursor += CHUNK;
-      if (cursor >= grassCount) cursor = 0;
+      if (flMat.userData.uCam) flMat.userData.uCam.value.copy(cam);
     },
   };
 }

@@ -126,9 +126,9 @@ export function createEnvironment(renderer, scene, sunDir) {
 export function createClouds(scene, sunDir) {
   const uniforms = {
     uTime: { value: 0 },
-    uSun: { value: sunDir.clone() },
-    uColor: { value: new THREE.Color(0xf8fbff) },
-    uShadow: { value: new THREE.Color(0xa8b8c9) },
+    uSun: { value: sunDir.clone().normalize() },
+    uTop: { value: new THREE.Color(0xffffff) },
+    uBot: { value: new THREE.Color(0xc5d2e0) },
   };
   const mat = new THREE.ShaderMaterial({
     transparent: true,
@@ -146,9 +146,9 @@ export function createClouds(scene, sunDir) {
     `,
     fragmentShader: `
       uniform float uTime;
-      uniform vec3 uSun, uColor, uShadow;
+      uniform vec3 uSun, uTop, uBot;
       varying vec3 vW;
-      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float noise(vec2 p){
         vec2 i = floor(p), f = fract(p);
         float a = hash(i), b = hash(i+vec2(1,0)), c = hash(i+vec2(0,1)), d = hash(i+vec2(1,1));
@@ -157,25 +157,44 @@ export function createClouds(scene, sunDir) {
       }
       float fbm(vec2 p){
         float s = 0.0, a = 0.5;
-        for (int i = 0; i < 6; i++) { s += a * noise(p); p = p * 2.07 + vec2(11.3, 4.1); a *= 0.51; }
+        for (int i = 0; i < 5; i++) { s += a * noise(p); p = p * 2.12 + vec2(17.1, 9.4); a *= 0.5; }
         return s;
       }
+      float billow(vec2 p){
+        float n = fbm(p);
+        return 1.0 - abs(2.0 * n - 1.0);
+      }
+      float cumulus(vec2 p){
+        float macro = billow(p * 0.55);
+        float lobes = billow(p * 1.35 + vec2(4.2, 1.7));
+        float detail = fbm(p * 3.4);
+        float holes = fbm(p * 0.9 + 11.0);
+        float c = macro * 0.55 + lobes * 0.38 + detail * 0.12;
+        c *= smoothstep(0.28, 0.58, holes);
+        return c;
+      }
       void main() {
-        vec2 uv = vW.xz * 0.00095;
-        float n = fbm(uv + vec2(uTime * 0.006, uTime * 0.003));
-        n += 0.32 * fbm(uv * 2.35 - vec2(uTime * 0.009, uTime * 0.002));
-        float rim = 1.0 - smoothstep(0.42, 1.15, length(uv) * 0.48);
-        float dens = smoothstep(0.42, 0.68, n) * rim;
-        dens *= 0.92;
-        if (dens < 0.025) discard;
-        float lit = 0.5 + 0.5 * clamp(dot(normalize(uSun), vec3(0.12, 1.0, 0.18)), 0.0, 1.0);
-        vec3 col = mix(uShadow, uColor, lit + 0.12 * n);
+        vec2 uv = vW.xz * 0.00105 + vec2(uTime * 0.0065, uTime * 0.0028);
+        float n = cumulus(uv);
+        float n2 = cumulus(uv * 1.15 + vec2(8.1, -3.4));
+        n = max(n, n2 * 0.72);
+        float rim = 1.0 - smoothstep(0.38, 1.08, length(vW.xz) * 0.00042);
+        float dens = smoothstep(0.52, 0.74, n) * rim;
+        dens = pow(dens, 0.85);
+        if (dens < 0.04) discard;
+        float gx = cumulus(uv + vec2(0.035, 0.0)) - cumulus(uv - vec2(0.035, 0.0));
+        float gz = cumulus(uv + vec2(0.0, 0.035)) - cumulus(uv - vec2(0.0, 0.035));
+        vec3 nor = normalize(vec3(-gx, 0.55, -gz));
+        float ndl = clamp(dot(nor, normalize(uSun)), 0.0, 1.0);
+        float wrap = ndl * 0.75 + 0.25;
+        vec3 col = mix(uBot, uTop, wrap);
+        col += vec3(0.08, 0.07, 0.05) * pow(ndl, 3.0);
         gl_FragColor = vec4(col, dens);
       }
     `,
   });
   const layers = [];
-  for (const [y, s] of [[95, 2200], [140, 2800], [200, 3400], [280, 4200]]) {
+  for (const [y, s] of [[110, 2400], [165, 3000], [230, 3800]]) {
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(s, s, 1, 1), mat);
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.y = y;
@@ -185,58 +204,12 @@ export function createClouds(scene, sunDir) {
     scene.add(mesh);
     layers.push(mesh);
   }
-  const puffTex = (() => {
-    const c = document.createElement('canvas');
-    c.width = c.height = 256;
-    const ctx = c.getContext('2d');
-    const draw = (x, y, r, a) => {
-      const g = ctx.createRadialGradient(x, y, r * 0.15, x, y, r);
-      g.addColorStop(0, `rgba(255,255,255,${a})`);
-      g.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fill();
-    };
-    draw(128, 140, 90, 0.55);
-    draw(80, 128, 70, 0.45);
-    draw(176, 122, 74, 0.5);
-    draw(128, 100, 62, 0.4);
-    const t = new THREE.CanvasTexture(c);
-    t.colorSpace = THREE.SRGBColorSpace;
-    return t;
-  })();
-  const puffMat = new THREE.MeshBasicMaterial({
-    map: puffTex,
-    transparent: true,
-    depthWrite: false,
-    fog: true,
-    opacity: 0.88,
-    color: 0xf2f6fb,
-  });
-  const puffs = [];
-  for (let i = 0; i < 18; i++) {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.55), puffMat);
-    const a = (i / 18) * Math.PI * 2;
-    const r = 90 + (i % 5) * 55;
-    m.position.set(Math.cos(a) * r, 70 + (i % 4) * 28, Math.sin(a) * r);
-    m.scale.setScalar(48 + (i % 6) * 10);
-    m.layers.set(1);
-    m.renderOrder = -1;
-    scene.add(m);
-    puffs.push({ mesh: m, a, r, y: m.position.y });
-  }
   return {
     update(time, cam) {
       uniforms.uTime.value = time;
       for (const m of layers) {
         m.position.x = cam.position.x;
         m.position.z = cam.position.z;
-      }
-      for (const p of puffs) {
-        const ang = p.a + time * 0.012;
-        p.mesh.position.set(cam.position.x + Math.cos(ang) * p.r, p.y, cam.position.z + Math.sin(ang) * p.r);
-        p.mesh.lookAt(cam.position.x, p.y, cam.position.z);
       }
     },
   };

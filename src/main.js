@@ -45,7 +45,7 @@ const SEG = 320;            // terrain segments
 const CELL = WORLD / SEG;
 const HALF = WORLD / 2;
 const ISLAND_R = 168;
-const ISLAND2 = { x: 298, z: 32, r: 78 };
+const ISLAND2 = { x: 328, z: 36, r: 72 };
 const EYE = 1.7;
 
 // ---------------------------------------------------------------- terrain function
@@ -262,7 +262,7 @@ function findShoreToward(from, to, landMin = 0.85) {
       seaRun = 0;
     } else if (lastLand) {
       seaRun += 0.5;
-      if (seaRun > 14) return lastHigh || lastLand;
+      if (seaRun > 6) return lastHigh || lastLand;
     }
   }
   return lastHigh || lastLand;

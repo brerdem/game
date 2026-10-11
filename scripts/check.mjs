@@ -223,6 +223,21 @@ if (extraDir) {
   await lookAt(shore.lookX, 0.2, shore.lookZ, shore.x - 2, Math.max(shore.y, 1.2), shore.z - 6, -0.08);
   await save(`${extraDir}/sea_and_shore.png`);
   await save(`${extraDir}/grass_shore.png`);
+
+  const gapView = await page.evaluate(() => {
+    const i2 = game.ISLAND2;
+    const L = Math.hypot(i2.x, i2.z) || 1;
+    const ux = i2.x / L, uz = i2.z / L;
+    const px = ux * 162, pz = uz * 162;
+    const lx = ux * 196, lz = uz * 196;
+    const sideX = -uz, sideZ = ux;
+    return {
+      px: px + sideX * 6, pz: pz + sideZ * 6,
+      py: Math.max(game.terrainHeight(px, pz), 1.4) + 1.6,
+      lx, lz, ly: 2,
+    };
+  });
+  await lookAt(gapView.lx, gapView.ly, gapView.lz, gapView.px, gapView.py, gapView.pz, -0.06);
   await save(`${extraDir}/gap_30m.png`);
 
   await page.evaluate(() => {
@@ -319,13 +334,16 @@ if (extraDir) {
     await page.evaluate(() => {
       const list = game.birds?.list || [];
       list.forEach((b, i) => {
-        b.mesh.position.set(12 + i * 5.5, 42 + (i % 3) * 4, -14 + (i % 4) * 3);
-        b.vel?.set(8, 0, 2);
-        b.mesh.lookAt(b.mesh.position.x + 8, b.mesh.position.y, b.mesh.position.z + 2);
+        const a = (i / Math.max(1, list.length)) * Math.PI * 0.7 - 0.3;
+        b.mesh.position.set(Math.sin(a) * 14, 38 + (i % 3) * 2.2, -18 - Math.cos(a) * 6);
+        b.vel?.set(Math.cos(a) * 8, 0, Math.sin(a) * 4);
+        b.mesh.lookAt(b.mesh.position.x + 8, b.mesh.position.y, b.mesh.position.z + 1);
+        if (b.wingL) b.wingL.rotation.z = 0.45;
+        if (b.wingR) b.wingR.rotation.z = -0.45;
       });
-      game.teleport(8, game.groundHeight(8, 10), 10);
-      game.setYaw(Math.atan2(20, -20) + Math.PI);
-      game.camera.rotation.x = 0.62;
+      game.teleport(0, game.groundHeight(0, 4) + 8, 4);
+      game.setYaw(Math.PI);
+      game.camera.rotation.x = 0.38;
       if (game.groundCover) game.groundCover.update(0, game.camera.position);
       game.renderer.render(game.scene, game.camera);
     });
@@ -342,6 +360,8 @@ if (extraDir) {
     console.log('wrote', `${extraDir}/hud.png`);
 
     await page.evaluate(() => {
+      const hud = document.getElementById('hud');
+      if (hud) hud.style.display = 'none';
       game.showMenu('land');
       game.applyMenuCamera(1.4);
       game.renderer.render(game.scene, game.camera);

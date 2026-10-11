@@ -467,10 +467,10 @@ function showMenu(mode) {
 function applyMenuCamera(time) {
   const mx = (HILL_A.x + HILL_B.x) * 0.5;
   const mz = (HILL_A.z + HILL_B.z) * 0.5;
-  const ang = time * 0.075;
-  camera.position.set(mx + Math.cos(ang) * 48, 21, mz + Math.sin(ang) * 34);
+  const ang = time * 0.06 + 0.85;
+  camera.position.set(mx + Math.cos(ang) * 36, 15.5, mz + Math.sin(ang) * 26);
   camera.up.set(0, 1, 0);
-  camera.lookAt(mx, 11.5, mz);
+  camera.lookAt(mx, 8.5, mz);
 }
 function exitGame(e) {
   e?.stopPropagation?.();

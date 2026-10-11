@@ -60,7 +60,7 @@ export function createBirds(scene, { rand, count = 8 }) {
 
   for (let i = 0; i < count; i++) {
     const { root, wingL, wingR } = makeSeagull();
-    const s = rand(1.15, 1.7);
+    const s = rand(2.4, 3.4);
     root.scale.setScalar(s);
     root.position.set(rand(-30, 160), rand(40, 62), rand(-50, 50));
     scene.add(root);

@@ -2,8 +2,22 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createNoise2D } from 'simplex-noise';
-import { applyTerrainSplat, bakeHeightTexture, createClouds, createEnvironment, createOcean } from './look.js';
+import { applyTerrainSplat, bakeHeightTexture, createClouds, createEnvironment, createOcean, loadManager } from './look.js';
 import { createGroundCover, plantTrees, tickNature } from './nature.js';
+import { createVineBridge } from './bridge.js';
+
+const loaderEl = document.getElementById('loader');
+const loaderFill = document.getElementById('loader-fill');
+const loaderPct = document.getElementById('loader-pct');
+function setLoad(p) {
+  const n = Math.max(0, Math.min(1, p));
+  if (loaderFill) loaderFill.style.width = `${Math.round(n * 100)}%`;
+  if (loaderPct) loaderPct.textContent = `${Math.round(n * 100)}%`;
+}
+setLoad(0.04);
+loadManager.onProgress = (_url, loaded, total) => {
+  setLoad(0.06 + 0.38 * (loaded / Math.max(total, 1)));
+};
 
 // ---------------------------------------------------------------- setup
 const params = new URLSearchParams(location.search);
@@ -26,11 +40,12 @@ const noiseB = createNoise2D(mulberry32(SEED + 202));
 const noiseC = createNoise2D(mulberry32(SEED + 303));
 const smooth = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
 
-const WORLD = 640;          // terrain size (m)
-const SEG = 320;            // terrain segments -> 2 m cells
+const WORLD = 800;          // terrain size (m)
+const SEG = 320;            // terrain segments
 const CELL = WORLD / SEG;
 const HALF = WORLD / 2;
-const ISLAND_R = 260;
+const ISLAND_R = 168;
+const ISLAND2 = { x: 328, z: 36, r: 72 };
 const EYE = 1.7;
 
 // ---------------------------------------------------------------- terrain function
@@ -41,18 +56,28 @@ function fbm(x, z, oct) {
 }
 const hills = [];
 for (let i = 0; i < 6; i++) {
-  const a = rand(0, Math.PI * 2), r = rand(45, 150);
-  hills.push({ x: Math.cos(a) * r, z: Math.sin(a) * r, h: rand(10, 24), r: rand(20, 38) });
+  const a = rand(0, Math.PI * 2), r = rand(35, 120);
+  hills.push({ x: Math.cos(a) * r, z: Math.sin(a) * r, h: rand(8, 18), r: rand(16, 30) });
+}
+for (let i = 0; i < 2; i++) {
+  const a = rand(0, Math.PI * 2), r = rand(12, 40);
+  hills.push({ x: ISLAND2.x + Math.cos(a) * r, z: ISLAND2.z + Math.sin(a) * r, h: rand(5, 11), r: rand(12, 22) });
+}
+function islandMask(x, z, cx, cz, rad) {
+  const dist = Math.hypot(x - cx, z - cz);
+  const d = dist / rad + 0.16 * noiseB((x + cx) / 130, (z + cz) / 130);
+  return 1 - smooth(0.48, 1.04, d);
 }
 function rawHeight(x, z) {
-  const dist = Math.hypot(x, z);
-  const d = dist / ISLAND_R + 0.17 * noiseB(x / 130, z / 130);
-  const mask = 1 - smooth(0.5, 1.05, d);
+  const m1 = islandMask(x, z, 0, 0, ISLAND_R);
+  const m2 = islandMask(x, z, ISLAND2.x, ISLAND2.z, ISLAND2.r);
+  const mask = Math.max(m1, m2);
   const e = fbm(x / 170, z / 170, 4);
-  let h = mask * (10 + 6 * e) - 5;
+  let h = m1 * (10 + 6 * e) + m2 * (7.5 + 4.5 * e) - 5;
   for (const hl of hills) {
     const dx = x - hl.x, dz = z - hl.z;
-    h += mask * hl.h * Math.exp(-(dx * dx + dz * dz) / (hl.r * hl.r));
+    const local = Math.hypot(hl.x - ISLAND2.x, hl.z - ISLAND2.z) < ISLAND2.r + 4 ? m2 : m1;
+    h += local * hl.h * Math.exp(-(dx * dx + dz * dz) / (hl.r * hl.r));
   }
   h += 0.5 * noiseC(x / 16, z / 16) * mask;
   return h;
@@ -123,7 +148,9 @@ function insideRamp(rp, x, z, m) {
 }
 function nearAnyRamp(x, z, m) { for (const rp of ramps) if (insideRamp(rp, x, z, m)) return true; return false; }
 function rampsHeight(x, z) { let h = -Infinity; for (const rp of ramps) h = Math.max(h, rampSurface(rp, x, z)); return h; }
-function groundHeight(x, z) { return Math.max(terrainHeight(x, z), rampsHeight(x, z)); }
+let bridge = null;
+function bridgeHeight(x, z) { return bridge ? bridge.surface(x, z) : -Infinity; }
+function groundHeight(x, z) { return Math.max(terrainHeight(x, z), rampsHeight(x, z), bridgeHeight(x, z)); }
 const localToWorld = (rp, lx, lz) => {
   const c = Math.cos(rp.yaw), s = Math.sin(rp.yaw);
   return { x: rp.sx + lx * c + lz * s, z: rp.sz - lx * s + lz * c };
@@ -219,6 +246,31 @@ applyTerrainSplat(terrain);
 const heightTex = bakeHeightTexture(terrainHeight, WORLD);
 const ocean = createOcean(scene, sunDir, { heightTex, WORLD, LOW, software });
 
+function shoreFromCenter(cx, cz, ux, uz, maxR, landMin = 0.9) {
+  let last = { x: cx, z: cz, y: terrainHeight(cx, cz) };
+  for (let t = 0; t <= maxR; t += 0.5) {
+    const x = cx + ux * t, z = cz + uz * t;
+    const h = terrainHeight(x, z);
+    if (h >= landMin) last = { x, z, y: h };
+    else if (h < 0.05 && last.y >= landMin) return last;
+  }
+  return last;
+}
+{
+  const gap = Math.hypot(ISLAND2.x, ISLAND2.z) || 1;
+  const ux = ISLAND2.x / gap, uz = ISLAND2.z / gap;
+  const aShore = shoreFromCenter(0, 0, ux, uz, ISLAND_R + 36, 0.22);
+  const bShore = shoreFromCenter(ISLAND2.x, ISLAND2.z, -ux, -uz, ISLAND2.r + 28, 0.22);
+  const y0 = Math.max(aShore.y, 2.4) + 0.45, y1 = Math.max(bShore.y, 2.4) + 0.45;
+  const span = Math.hypot(bShore.x - aShore.x, bShore.z - aShore.z);
+  const sag = Math.min(Math.max(1.1, Math.min(y0, y1) - 0.75), span * 0.12);
+  bridge = createVineBridge(scene, {
+    a: { x: aShore.x, y: y0, z: aShore.z },
+    b: { x: bShore.x, y: y1, z: bShore.z },
+    sag,
+  });
+}
+
 // ---------------------------------------------------------------- ramp meshes
 function plankTexture() {
   const cv = document.createElement('canvas'); cv.width = 128; cv.height = 128;
@@ -274,18 +326,30 @@ function addTrunk(x, z, r) {
   trunkGrid.get(k).push(t);
 }
 const occupied = [];
-function scatter(count, { minH = 2.4, maxH = 30, minNy = 0.88, spacing = 0, rampMargin = 2, maxTries = count * 30, clusterNoise = null, shareOccupied = true, avoidSpawn = 4 }) {
+function scatter(count, { minH = 2.4, maxH = 30, minNy = 0.88, spacing = 0, rampMargin = 2, maxTries = count * 30, clusterNoise = null, shareOccupied = true, avoidSpawn = 4, around = null } = {}) {
   const bag = shareOccupied ? occupied : [];
   const out = [];
   let tries = 0;
   while (out.length < count && tries++ < maxTries) {
-    const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * ISLAND_R;
-    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    let x, z;
+    if (around) {
+      const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * around.r;
+      x = around.x + Math.cos(a) * r;
+      z = around.z + Math.sin(a) * r;
+    } else {
+      const use2 = rng() < 0.24;
+      const cx = use2 ? ISLAND2.x : 0;
+      const cz = use2 ? ISLAND2.z : 0;
+      const rad = use2 ? ISLAND2.r * 0.92 : ISLAND_R;
+      const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * rad;
+      x = cx + Math.cos(a) * r;
+      z = cz + Math.sin(a) * r;
+    }
     const h = terrainHeight(x, z);
     if (h < minH || h > maxH) continue;
     if (terrainNormalY(x, z) < minNy) continue;
     if (nearAnyRamp(x, z, rampMargin)) continue;
-    if (Math.hypot(x - spawn.x, z - spawn.z) < avoidSpawn) continue;
+    if (avoidSpawn && Math.hypot(x - spawn.x, z - spawn.z) < avoidSpawn) continue;
     if (clusterNoise && noiseB(x / clusterNoise.s, z / clusterNoise.s) < clusterNoise.t) continue;
     if (spacing > 0) {
       let ok = true;
@@ -301,6 +365,7 @@ function scatter(count, { minH = 2.4, maxH = 30, minNy = 0.88, spacing = 0, ramp
 // ---------------------------------------------------------------- player
 const controls = new PointerLockControls(camera, document.body);
 const player = { pos: new THREE.Vector3(spawn.x, groundHeight(spawn.x, spawn.z), spawn.z), vel: new THREE.Vector3(), onGround: true };
+let lastSafe = { x: spawn.x, y: player.pos.y, z: spawn.z };
 const PR = 0.35, WALK = 6, SPRINT = 11, GRAV = 24, JUMP = 8.2, STEP = 0.6;
 const SUPER_JUMP = 36.7; // ~28 m peak vs ~1.4 m normal jump
 const trampolines = [];
@@ -360,6 +425,7 @@ function resetRun() {
   player.pos.set(spawn.x, groundHeight(spawn.x, spawn.z), spawn.z);
   player.vel.set(0, 0, 0);
   player.onGround = true;
+  lastSafe = { x: spawn.x, y: player.pos.y, z: spawn.z };
   camera.position.set(player.pos.x, player.pos.y + EYE, player.pos.z);
   refreshHud();
   controls.lock();
@@ -460,10 +526,10 @@ function gemGlowTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = 64;
   const ctx = c.getContext('2d');
-  const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 30);
-  g.addColorStop(0, 'rgba(255,70,90,0.85)');
-  g.addColorStop(0.4, 'rgba(200,10,40,0.28)');
-  g.addColorStop(1, 'rgba(120,0,20,0)');
+  const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 28);
+  g.addColorStop(0, 'rgba(90,0,12,0.55)');
+  g.addColorStop(0.35, 'rgba(70,0,10,0.22)');
+  g.addColorStop(1, 'rgba(30,0,4,0)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 64, 64);
   const t = new THREE.CanvasTexture(c);
@@ -502,7 +568,7 @@ function syncDiamondInstances(time) {
     diamondDummy.updateMatrix();
     diamondMesh.setMatrixAt(i, diamondDummy.matrix);
     if (diamondGlow) {
-      const glowS = gem.collected && gem.pop >= 1 ? 0.0001 : Math.max(0.8, diamondDummy.scale.x) * 1.55;
+      const glowS = gem.collected && gem.pop >= 1 ? 0.0001 : Math.max(0.55, diamondDummy.scale.x) * 1.05;
       diamondDummy.quaternion.copy(camera.quaternion);
       diamondDummy.scale.setScalar(glowS);
       diamondDummy.updateMatrix();
@@ -603,23 +669,29 @@ function buildDiamonds() {
   }
   const extraHills = scatter(8, { minH: 12, maxH: 30, minNy: 0.8, spacing: 16, rampMargin: 4, shareOccupied: false, avoidSpawn: 8 });
   for (const p of extraHills) placeDiamond(p.x, p.y + 1.3, p.z, { points: 150 });
+  const island2Gems = scatter(12, {
+    around: { x: ISLAND2.x, z: ISLAND2.z, r: ISLAND2.r * 0.8 },
+    minH: 2.0, maxH: 18, minNy: 0.76, spacing: 8, rampMargin: 1.5,
+    maxTries: 12 * 60, shareOccupied: false, avoidSpawn: 0,
+  });
+  for (const p of island2Gems) placeDiamond(p.x, p.y + 1.25, p.z, { points: 100 });
 
   const gemMat = new THREE.MeshPhysicalMaterial({
-    color: 0xd40028,
-    metalness: 0.12,
-    roughness: 0.06,
-    transmission: software ? 0.08 : 0.58,
-    thickness: 0.62,
+    color: 0x6b0014,
+    metalness: 0.05,
+    roughness: 0.08,
+    transmission: software ? 0.0 : 0.32,
+    thickness: 0.85,
     ior: 2.42,
-    reflectivity: 0.95,
+    reflectivity: 0.7,
     clearcoat: 1,
-    clearcoatRoughness: 0.03,
-    attenuationColor: new THREE.Color(0xff0033),
-    attenuationDistance: 0.38,
-    emissive: new THREE.Color(0xc40022),
-    emissiveIntensity: 0.7,
+    clearcoatRoughness: 0.05,
+    attenuationColor: new THREE.Color(0x6a0014),
+    attenuationDistance: 0.14,
+    emissive: new THREE.Color(0x3d000c),
+    emissiveIntensity: 0.85,
     envMap: gemEnv,
-    envMapIntensity: 1.85,
+    envMapIntensity: software ? 0.35 : 0.55,
     flatShading: true,
   });
   diamondMesh = new THREE.InstancedMesh(diamondGeometry(), gemMat, Math.max(diamonds.length, 1));
@@ -628,7 +700,7 @@ function buildDiamonds() {
   scene.add(diamondMesh);
 
   diamondGlow = new THREE.InstancedMesh(
-    new THREE.PlaneGeometry(1.15, 1.15),
+    new THREE.PlaneGeometry(0.72, 0.72),
     new THREE.MeshBasicMaterial({
       map: gemGlowTexture(),
       transparent: true,
@@ -645,9 +717,18 @@ function buildDiamonds() {
   refreshHud();
 }
 
+function onBridge(x, z) {
+  return bridgeHeight(x, z) > -1000;
+}
 function walkable(x, z) {
-  if (terrainHeight(x, z) < -0.7 && rampsHeight(x, z) === -Infinity) return false; // deep water
+  if (onBridge(x, z)) return groundHeight(x, z) <= player.pos.y + STEP + 0.4;
+  if (terrainHeight(x, z) < -0.7 && rampsHeight(x, z) === -Infinity) return false;
   return groundHeight(x, z) <= player.pos.y + STEP;
+}
+function respawnOnShore() {
+  player.pos.set(lastSafe.x, lastSafe.y, lastSafe.z);
+  player.vel.set(0, 0, 0);
+  player.onGround = true;
 }
 function pushOutOfTrunks() {
   const cx = Math.floor(player.pos.x / TGRID), cz = Math.floor(player.pos.z / TGRID);
@@ -705,6 +786,14 @@ function updatePlayer(dt) {
     else player.onGround = false;
   }
 
+  if (player.onGround && terrainHeight(player.pos.x, player.pos.z) > 1.35) {
+    lastSafe = { x: player.pos.x, y: player.pos.y, z: player.pos.z };
+  }
+  const wet = terrainHeight(player.pos.x, player.pos.z) < 0.55
+    && rampsHeight(player.pos.x, player.pos.z) === -Infinity
+    && !onBridge(player.pos.x, player.pos.z);
+  if (wet && player.pos.y < 0.22) respawnOnShore();
+
   camera.position.set(player.pos.x, player.pos.y + EYE, player.pos.z);
 }
 
@@ -745,6 +834,16 @@ const mmBase = document.createElement('canvas'); mmBase.width = mmBase.height = 
     bctx.beginPath();
     corners.forEach(([lx, lz], i) => { const w = localToWorld(rp, lx, lz); const [u, v] = toMap(w.x, w.z); i ? bctx.lineTo(u, v) : bctx.moveTo(u, v); });
     bctx.closePath(); bctx.fill(); bctx.stroke();
+  }
+  if (bridge) {
+    bctx.strokeStyle = '#6b4423';
+    bctx.lineWidth = 3.2;
+    bctx.beginPath();
+    const [u0, v0] = toMap(bridge.a.x, bridge.a.z);
+    const [u1, v1] = toMap(bridge.b.x, bridge.b.z);
+    bctx.moveTo(u0, v0);
+    bctx.lineTo(u1, v1);
+    bctx.stroke();
   }
 }
 const mmDir = new THREE.Vector3();
@@ -801,9 +900,10 @@ function frame() {
   tickNature(clock.elapsedTime);
   clouds.update(clock.elapsedTime, camera);
   ocean.update(clock.elapsedTime, sunDir);
+  if (bridge) bridge.update(clock.elapsedTime);
   if (groundCover) groundCover.update(clock.elapsedTime, camera.position, dt, terrainHeight);
   if (diamondMesh?.material) {
-    diamondMesh.material.emissiveIntensity = 0.32 + 0.22 * Math.sin(clock.elapsedTime * 5.2);
+    diamondMesh.material.emissiveIntensity = 0.72 + 0.16 * Math.sin(clock.elapsedTime * 4.4);
   }
 
   // sun/shadow camera follows the player, snapped to texels to avoid shimmering
@@ -832,7 +932,8 @@ addEventListener('resize', () => {
 // small hook for automated tests / debugging
 window.game = {
   keys, get fps() { return fps; }, player, camera, ramps, spawn, groundHeight, terrainHeight, renderer, scene,
-  diamonds, trampolines, get score() { return score; }, get collected() { return collected; }, get elapsed() { return elapsed; },
+  diamonds, trampolines, bridge, ISLAND2,
+  get score() { return score; }, get collected() { return collected; }, get elapsed() { return elapsed; },
   counts: { ramps: ramps.length },
 };
 window.game.simulate = (seconds, k = {}) => {
@@ -858,15 +959,22 @@ function applyLowQuality() {
 }
 
 async function boot() {
-  vegStats = plantTrees(scene, { scatter, addTrunk, rand, renderer, LOW });
+  setLoad(0.48);
+  vegStats = await plantTrees(scene, {
+    scatter, addTrunk, rand, renderer, LOW, island2: ISLAND2,
+    onProgress: (p) => setLoad(0.48 + 0.38 * p),
+  });
+  setLoad(0.88);
   groundCover = createGroundCover(scene, {
-    terrainHeight, terrainNormalY, rand, LOW, spawn,
+    terrainHeight, terrainNormalY, rand, LOW, spawn, heightTex, WORLD,
   });
   vegStats.grass = groundCover.grass;
   vegStats.flowers = groundCover.flowers;
   stampTrees(vegStats.treePts);
+  setLoad(0.93);
   buildTrampolines();
   buildDiamonds();
+  setLoad(1);
   window.game.counts = {
     trees: vegStats.trees,
     bushes: vegStats.bushes,
@@ -876,10 +984,17 @@ async function boot() {
     diamonds: diamonds.length,
     trampolines: trampolines.length,
     ramps: ramps.length,
+    island2Gems: diamonds.filter((d) => Math.hypot(d.x - ISLAND2.x, d.z - ISLAND2.z) < ISLAND2.r + 4).length,
     quality: LOW ? 'low' : 'high',
   };
   window.game.treePts = vegStats.treePts;
+  window.game.groundCover = groundCover;
+  window.game.bridge = bridge;
   window.game.modelsLoaded = true;
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  if (loaderEl) loaderEl.classList.add('hidden');
+  document.body.classList.add('booted');
+  if (!DEBUG) overlay.classList.add('ready');
   bootReady = true;
   if (DEBUG) playStarted = true;
   window.__ready = true;

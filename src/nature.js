@@ -17,17 +17,17 @@ function canvasTex(w, h, draw) {
 }
 
 function bladeTexture() {
-  return canvasTex(64, 256, (ctx, w, h) => {
+  return canvasTex(32, 128, (ctx, w, h) => {
     const g = ctx.createLinearGradient(0, h, 0, 0);
-    g.addColorStop(0, '#245818');
-    g.addColorStop(0.45, '#3f8a2c');
-    g.addColorStop(1, '#9ad45a');
+    g.addColorStop(0, '#3a4a28');
+    g.addColorStop(0.4, '#5a6e38');
+    g.addColorStop(1, '#8a9a55');
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.moveTo(w * 0.5, h);
-    ctx.bezierCurveTo(w * 0.08, h * 0.62, w * 0.22, h * 0.18, w * 0.46, 4);
-    ctx.quadraticCurveTo(w * 0.5, 0, w * 0.56, 6);
-    ctx.bezierCurveTo(w * 0.78, h * 0.22, w * 0.9, h * 0.62, w * 0.5, h);
+    ctx.bezierCurveTo(w * 0.18, h * 0.62, w * 0.28, h * 0.18, w * 0.46, 3);
+    ctx.quadraticCurveTo(w * 0.5, 0, w * 0.54, 4);
+    ctx.bezierCurveTo(w * 0.72, h * 0.22, w * 0.82, h * 0.62, w * 0.5, h);
     ctx.fill();
   });
 }
@@ -304,17 +304,18 @@ export async function plantTrees(scene, { scatter, addTrunk, rand, renderer, LOW
 }
 
 function bladeGeometry() {
-  const a = new THREE.PlaneGeometry(0.11, 0.62, 1, 3);
-  a.translate(0, 0.31, 0);
+  const H = 0.32;
+  const a = new THREE.PlaneGeometry(0.038, H, 1, 3);
+  a.translate(0, H * 0.5, 0);
   const b = a.clone();
   b.rotateY(Math.PI / 2);
   const geo = mergeGeometries([a, b]);
   const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const y = pos.getY(i);
-    const taper = 1 - y / 0.62;
-    pos.setX(i, pos.getX(i) * (0.22 + 0.78 * taper));
-    pos.setZ(i, pos.getZ(i) * (0.22 + 0.78 * taper));
+    const taper = 1 - y / H;
+    pos.setX(i, pos.getX(i) * (0.18 + 0.82 * taper));
+    pos.setZ(i, pos.getZ(i) * (0.18 + 0.82 * taper));
   }
   return geo;
 }
@@ -327,95 +328,75 @@ function flowerGeometry() {
   return mergeGeometries([a, b]);
 }
 
-function applyTerrainWrap(mat, { R, heightTex, WORLD, minH = 2.05, wind = 0.12 }) {
+function applyBladeWind(mat, wind = 0.08) {
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = { value: 0 };
-    shader.uniforms.uCam = { value: new THREE.Vector3() };
-    shader.uniforms.uR = { value: R };
-    shader.uniforms.tHeight = { value: heightTex };
-    shader.uniforms.uWorld = { value: WORLD };
-    shader.uniforms.uMinH = { value: minH };
     leafWind.push(shader);
-    mat.userData.uCam = shader.uniforms.uCam;
-    if (mat.userData._camSeed) shader.uniforms.uCam.value.copy(mat.userData._camSeed);
-    shader.vertexShader = `
-      uniform float uTime;
-      uniform vec3 uCam;
-      uniform float uR;
-      uniform sampler2D tHeight;
-      uniform float uWorld;
-      uniform float uMinH;
-      varying float vFade;
-      ${shader.vertexShader}`.replace(
-      '#include <begin_vertex>',
-      `#include <begin_vertex>
-      #ifdef USE_INSTANCING
-      vec3 inst = instanceMatrix[3].xyz;
-      vec2 rel = inst.xz - uCam.xz;
-      rel -= uR * 2.0 * floor((rel + uR) / (uR * 2.0));
-      vec2 wxz = uCam.xz + rel;
-      vec2 huv = wxz / uWorld + 0.5;
-      float terrainH = texture2D(tHeight, huv).r * 40.0 - 8.0;
-      float e = 4.0 / uWorld;
-      float hL = texture2D(tHeight, huv + vec2(-e, 0.0)).r * 40.0 - 8.0;
-      float hR = texture2D(tHeight, huv + vec2( e, 0.0)).r * 40.0 - 8.0;
-      float hD = texture2D(tHeight, huv + vec2(0.0, -e)).r * 40.0 - 8.0;
-      float hU = texture2D(tHeight, huv + vec2(0.0,  e)).r * 40.0 - 8.0;
-      float ny = 8.0 / length(vec3(hR - hL, 8.0, hU - hD));
-      float land = step(uMinH, terrainH) * step(0.80, ny);
-      float dist = length(rel);
-      vFade = (1.0 - smoothstep(uR * 0.55, uR * 0.92, dist)) * land;
-      vec3 world = vec3(wxz.x, mix(-80.0, terrainH, land), wxz.y);
-      float phase = inst.x * 0.4 + inst.z * 0.33;
-      float hgt = transformed.y;
-      transformed.x += sin(uTime * 2.05 + phase) * ${wind.toFixed(3)} * hgt * hgt;
-      transformed.z += cos(uTime * 1.65 + phase) * ${(wind * 0.75).toFixed(3)} * hgt * hgt;
-      transformed += world - inst;
-      #endif`
-    );
-    shader.fragmentShader = `varying float vFade;\n${shader.fragmentShader}`.replace(
-      '#include <dithering_fragment>',
-      `#include <dithering_fragment>
-      gl_FragColor.a *= vFade;
-      if (gl_FragColor.a < 0.08) discard;`
-    );
+    if (!shader.vertexShader.includes('uniform float uTime')) {
+      shader.vertexShader = `uniform float uTime;\n${shader.vertexShader}`;
+    }
+    if (!shader.vertexShader.includes('bladeWindSway')) {
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        // bladeWindSway — local sway only; world XZ/Y come from the instance matrix
+        #ifdef USE_INSTANCING
+        float phase = instanceMatrix[3].x * 0.4 + instanceMatrix[3].z * 0.33;
+        transformed.x += sin(uTime * 2.05 + phase) * ${wind.toFixed(3)} * transformed.y;
+        transformed.z += cos(uTime * 1.65 + phase) * ${(wind * 0.75).toFixed(3)} * transformed.y;
+        #endif`
+      );
+    }
   };
 }
 
-export function createGroundCover(scene, { terrainHeight, terrainNormalY, rand, LOW, spawn, heightTex, WORLD }) {
-  const grassCount = LOW ? 14000 : 36000;
-  const flowerCount = LOW ? 380 : 820;
-  const R = LOW ? 26 : 36;
+function wrap1(v, c, R) {
+  let rel = v - c;
+  rel -= (2 * R) * Math.floor((rel + R) / (2 * R));
+  return c + rel;
+}
+
+export function createGroundCover(scene, { terrainHeight, terrainNormalY, rand, LOW, spawn }) {
+  const grassCount = LOW ? 22000 : 48000;
+  const flowerCount = LOW ? 280 : 620;
+  const R = LOW ? 22 : 28;
   const origin = spawn || { x: 0, z: 0 };
+  const minH = 2.05;
+
+  // GPU wrap sampled a heightmap in the vertex shader (often unbound →
+  // white = 32 m) and added the wrap offset before instanceMatrix, which
+  // rotated Y into the sky. Positions are authored on the CPU instead:
+  // wrap XZ around the camera, snap Y to terrainHeight, hide over water.
   const grassGeo = bladeGeometry();
   const grassMat = new THREE.MeshStandardMaterial({
     map: bladeTexture(),
     color: 0xffffff,
-    roughness: 0.9,
+    roughness: 0.92,
     metalness: 0,
     side: THREE.DoubleSide,
-    alphaTest: 0.35,
+    alphaTest: 0.4,
   });
-  applyTerrainWrap(grassMat, { R, heightTex, WORLD, minH: 2.05, wind: 0.12 });
-  grassMat.userData._camSeed = new THREE.Vector3(origin.x, 0, origin.z);
-  grassMat.transparent = true;
-  grassMat.customProgramCacheKey = () => 'wrap-grass-v5';
+  applyBladeWind(grassMat, 0.08);
+  grassMat.customProgramCacheKey = () => 'cpu-grass-v1';
 
   const grass = new THREE.InstancedMesh(grassGeo, grassMat, grassCount);
+  const gMeta = new Array(grassCount);
   const col = new THREE.Color();
   for (let i = 0; i < grassCount; i++) {
     const a = rand(0, Math.PI * 2);
     const r = Math.sqrt(rand(0, 1)) * R;
-    dummy.position.set(origin.x + Math.cos(a) * r, 0, origin.z + Math.sin(a) * r);
-    dummy.rotation.set(0, rand(0, Math.PI * 2), rand(-0.12, 0.12));
-    dummy.scale.set(rand(0.75, 1.45), rand(0.7, 1.7), 1);
-    dummy.updateMatrix();
-    grass.setMatrixAt(i, dummy.matrix);
-    col.setHSL(0.27 + rand(-0.035, 0.045), 0.52, 0.32 + rand(-0.07, 0.1));
+    gMeta[i] = {
+      ox: origin.x + Math.cos(a) * r,
+      oz: origin.z + Math.sin(a) * r,
+      yaw: rand(0, Math.PI * 2),
+      sx: rand(0.7, 1.15),
+      sy: rand(0.48, 1.55),
+    };
+    if (rand(0, 1) < 0.18) col.setHSL(0.12 + rand(-0.02, 0.04), 0.28 + rand(-0.06, 0.08), 0.34 + rand(-0.05, 0.06));
+    else col.setHSL(0.22 + rand(-0.04, 0.06), 0.32 + rand(-0.08, 0.1), 0.30 + rand(-0.06, 0.08));
     grass.setColorAt(i, col);
   }
-  grass.instanceMatrix.needsUpdate = true;
-  if (grass.instanceColor) grass.instanceColor.needsUpdate = true;
+  grass.instanceColor.needsUpdate = true;
   grass.castShadow = false;
   grass.receiveShadow = true;
   grass.frustumCulled = false;
@@ -427,38 +408,70 @@ export function createGroundCover(scene, { terrainHeight, terrainNormalY, rand, 
     color: 0xffffff,
     roughness: 0.65,
     side: THREE.DoubleSide,
-    alphaTest: 0.3,
+    alphaTest: 0.35,
   });
-  applyTerrainWrap(flMat, { R, heightTex, WORLD, minH: 2.05, wind: 0.04 });
-  flMat.userData._camSeed = new THREE.Vector3(origin.x, 0, origin.z);
-  flMat.transparent = true;
-  flMat.customProgramCacheKey = () => 'wrap-flower-v5';
+  applyBladeWind(flMat, 0.03);
+  flMat.customProgramCacheKey = () => 'cpu-flower-v1';
   const flowers = new THREE.InstancedMesh(flowerGeometry(), flMat, flowerCount);
+  const fMeta = new Array(flowerCount);
   const fcol = new THREE.Color();
   const FCOLS = [0xfff4a3, 0xffe9f2, 0xc5b7ff, 0xffffff, 0xffd27a];
   for (let i = 0; i < flowerCount; i++) {
     const a = rand(0, Math.PI * 2);
     const r = Math.sqrt(rand(0, 1)) * R * 0.88;
-    dummy.position.set(origin.x + Math.cos(a) * r, 0, origin.z + Math.sin(a) * r);
-    dummy.rotation.y = rand(0, Math.PI * 2);
-    dummy.scale.setScalar(rand(0.55, 1.15));
-    dummy.updateMatrix();
-    flowers.setMatrixAt(i, dummy.matrix);
+    fMeta[i] = {
+      ox: origin.x + Math.cos(a) * r,
+      oz: origin.z + Math.sin(a) * r,
+      yaw: rand(0, Math.PI * 2),
+      s: rand(0.55, 1.05),
+    };
     fcol.set(FCOLS[i % FCOLS.length]);
     flowers.setColorAt(i, fcol);
   }
-  flowers.instanceMatrix.needsUpdate = true;
-  if (flowers.instanceColor) flowers.instanceColor.needsUpdate = true;
+  flowers.instanceColor.needsUpdate = true;
   flowers.frustumCulled = false;
   flowers.layers.set(1);
   scene.add(flowers);
 
+  let lastCX = Infinity, lastCZ = Infinity;
+  function placeAll(cam) {
+    const cx = cam.x ?? cam[0], cz = cam.z ?? cam[2];
+    lastCX = cx; lastCZ = cz;
+    for (let i = 0; i < grassCount; i++) {
+      const m = gMeta[i];
+      const x = wrap1(m.ox, cx, R);
+      const z = wrap1(m.oz, cz, R);
+      const h = terrainHeight(x, z);
+      const land = h >= minH && terrainNormalY(x, z) >= 0.80;
+      dummy.position.set(x, land ? h : -80, z);
+      dummy.rotation.set(0, m.yaw, 0);
+      dummy.scale.set(land ? m.sx : 0.0001, land ? m.sy : 0.0001, 1);
+      dummy.updateMatrix();
+      grass.setMatrixAt(i, dummy.matrix);
+    }
+    grass.instanceMatrix.needsUpdate = true;
+    for (let i = 0; i < flowerCount; i++) {
+      const m = fMeta[i];
+      const x = wrap1(m.ox, cx, R);
+      const z = wrap1(m.oz, cz, R);
+      const h = terrainHeight(x, z);
+      const land = h >= minH && terrainNormalY(x, z) >= 0.80;
+      dummy.position.set(x, land ? h : -80, z);
+      dummy.rotation.set(0, m.yaw, 0);
+      dummy.scale.setScalar(land ? m.s : 0.0001);
+      dummy.updateMatrix();
+      flowers.setMatrixAt(i, dummy.matrix);
+    }
+    flowers.instanceMatrix.needsUpdate = true;
+  }
+  placeAll(origin);
+
   return {
     grass: grassCount,
     flowers: flowerCount,
-    update(time, cam) {
-      if (grassMat.userData.uCam) grassMat.userData.uCam.value.copy(cam);
-      if (flMat.userData.uCam) flMat.userData.uCam.value.copy(cam);
+    update(_time, cam) {
+      const cx = cam.x ?? 0, cz = cam.z ?? 0;
+      if ((cx - lastCX) * (cx - lastCX) + (cz - lastCZ) * (cz - lastCZ) > 1.6 * 1.6) placeAll(cam);
     },
   };
 }

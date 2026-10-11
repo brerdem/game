@@ -5,6 +5,7 @@ import { createNoise2D } from 'simplex-noise';
 import { applyTerrainSplat, bakeHeightTexture, createClouds, createEnvironment, createOcean, loadManager } from './look.js';
 import { createGroundCover, plantTrees, tickNature } from './nature.js';
 import { createVineBridge } from './bridge.js';
+import { createBirds } from './birds.js';
 
 const loaderEl = document.getElementById('loader');
 const loaderFill = document.getElementById('loader-fill');
@@ -44,8 +45,12 @@ const WORLD = 800;          // terrain size (m)
 const SEG = 320;            // terrain segments
 const CELL = WORLD / SEG;
 const HALF = WORLD / 2;
-const ISLAND_R = 168;
-const ISLAND2 = { x: 328, z: 36, r: 72 };
+const ISLAND_R = 160;
+const ISLAND2 = { x: 276, z: 18, r: 54 };
+const gapLen = Math.hypot(ISLAND2.x, ISLAND2.z) || 1;
+const gapU = { x: ISLAND2.x / gapLen, z: ISLAND2.z / gapLen };
+const HILL_A = { x: gapU.x * 142, z: gapU.z * 142, h: 20, r: 24 };
+const HILL_B = { x: ISLAND2.x - gapU.x * 34, z: ISLAND2.z - gapU.z * 34, h: 16, r: 20 };
 const EYE = 1.7;
 
 // ---------------------------------------------------------------- terrain function
@@ -60,20 +65,28 @@ for (let i = 0; i < 6; i++) {
   hills.push({ x: Math.cos(a) * r, z: Math.sin(a) * r, h: rand(8, 18), r: rand(16, 30) });
 }
 for (let i = 0; i < 2; i++) {
-  const a = rand(0, Math.PI * 2), r = rand(12, 40);
-  hills.push({ x: ISLAND2.x + Math.cos(a) * r, z: ISLAND2.z + Math.sin(a) * r, h: rand(5, 11), r: rand(12, 22) });
+  const a = rand(0, Math.PI * 2), r = rand(12, 34);
+  hills.push({ x: ISLAND2.x + Math.cos(a) * r, z: ISLAND2.z + Math.sin(a) * r, h: rand(5, 10), r: rand(12, 20) });
 }
 function islandMask(x, z, cx, cz, rad) {
   const dist = Math.hypot(x - cx, z - cz);
-  const d = dist / rad + 0.16 * noiseB((x + cx) / 130, (z + cz) / 130);
+  const d = dist / rad + 0.09 * noiseB((x + cx) / 130, (z + cz) / 130);
   return 1 - smooth(0.48, 1.04, d);
+}
+function hillFalloff(x, z, hl) {
+  const dx = x - hl.x, dz = z - hl.z;
+  return Math.exp(-(dx * dx + dz * dz) / (hl.r * hl.r));
 }
 function rawHeight(x, z) {
   const m1 = islandMask(x, z, 0, 0, ISLAND_R);
   const m2 = islandMask(x, z, ISLAND2.x, ISLAND2.z, ISLAND2.r);
-  const mask = Math.max(m1, m2);
+  const ha = hillFalloff(x, z, HILL_A);
+  const hb = hillFalloff(x, z, HILL_B);
+  // Facing-shore hills keep their own land so the tops stay above water.
+  const mask = Math.max(m1, m2, ha * 0.88, hb * 0.88);
   const e = fbm(x / 170, z / 170, 4);
   let h = m1 * (10 + 6 * e) + m2 * (7.5 + 4.5 * e) - 5;
+  h += ha * HILL_A.h + hb * HILL_B.h;
   for (const hl of hills) {
     const dx = x - hl.x, dz = z - hl.z;
     const local = Math.hypot(hl.x - ISLAND2.x, hl.z - ISLAND2.z) < ISLAND2.r + 4 ? m2 : m1;
@@ -183,6 +196,18 @@ for (let i = 0; i < 5; i++) {
   for (const o of ramps) if (Math.hypot(o.sx - rp.sx, o.sz - rp.sz) < 30) clash = true;
   if (!clash) ramps.push(rp);
 }
+function addHillPath(hx, hz, inwardX, inwardZ) {
+  const topH = terrainHeight(hx, hz);
+  const dx = inwardX - hx, dz = inwardZ - hz;
+  const len = Math.hypot(dx, dz) || 1;
+  const L = 20;
+  const sx = hx + (dx / len) * L, sz = hz + (dz / len) * L;
+  const base = terrainHeight(sx, sz) - 0.05;
+  const yaw = Math.atan2(hx - sx, hz - sz);
+  ramps.push({ sx, sz, yaw, L, W: 4.2, PL: 5.8, rise: Math.max(2.2, topH - base - 0.2), base, kind: 'path' });
+}
+addHillPath(HILL_A.x, HILL_A.z, 0, 0);
+addHillPath(HILL_B.x, HILL_B.z, ISLAND2.x, ISLAND2.z);
 // footprint minimum terrain for each ramp (so the boxes reach into the ground)
 for (const rp of ramps) {
   let mn = Infinity;
@@ -246,27 +271,14 @@ applyTerrainSplat(terrain);
 const heightTex = bakeHeightTexture(terrainHeight, WORLD);
 const ocean = createOcean(scene, sunDir, { heightTex, WORLD, LOW, software });
 
-function shoreFromCenter(cx, cz, ux, uz, maxR, landMin = 0.9) {
-  let last = { x: cx, z: cz, y: terrainHeight(cx, cz) };
-  for (let t = 0; t <= maxR; t += 0.5) {
-    const x = cx + ux * t, z = cz + uz * t;
-    const h = terrainHeight(x, z);
-    if (h >= landMin) last = { x, z, y: h };
-    else if (h < 0.05 && last.y >= landMin) return last;
-  }
-  return last;
-}
 {
-  const gap = Math.hypot(ISLAND2.x, ISLAND2.z) || 1;
-  const ux = ISLAND2.x / gap, uz = ISLAND2.z / gap;
-  const aShore = shoreFromCenter(0, 0, ux, uz, ISLAND_R + 36, 0.22);
-  const bShore = shoreFromCenter(ISLAND2.x, ISLAND2.z, -ux, -uz, ISLAND2.r + 28, 0.22);
-  const y0 = Math.max(aShore.y, 2.4) + 0.45, y1 = Math.max(bShore.y, 2.4) + 0.45;
-  const span = Math.hypot(bShore.x - aShore.x, bShore.z - aShore.z);
-  const sag = Math.min(Math.max(1.1, Math.min(y0, y1) - 0.75), span * 0.12);
+  const aTop = { x: HILL_A.x, z: HILL_A.z, y: terrainHeight(HILL_A.x, HILL_A.z) };
+  const bTop = { x: HILL_B.x, z: HILL_B.z, y: terrainHeight(HILL_B.x, HILL_B.z) };
+  const span = Math.hypot(bTop.x - aTop.x, bTop.z - aTop.z);
+  const sag = Math.min(Math.max(3.2, Math.min(aTop.y, bTop.y) * 0.34), span * 0.14);
   bridge = createVineBridge(scene, {
-    a: { x: aShore.x, y: y0, z: aShore.z },
-    b: { x: bShore.x, y: y1, z: bShore.z },
+    a: { x: aTop.x, y: aTop.y + 0.18, z: aTop.z },
+    b: { x: bTop.x, y: bTop.y + 0.18, z: bTop.z },
     sag,
   });
 }
@@ -289,7 +301,15 @@ function plankTexture() {
   return t;
 }
 const plankTex = plankTexture();
-function rampMaterial(rx, ry) { const t = plankTex.clone(); t.needsUpdate = true; t.repeat.set(rx, ry); return new THREE.MeshStandardMaterial({ map: t, roughness: 0.85 }); }
+function rampMaterial(rx, ry, kind) {
+  const t = plankTex.clone();
+  t.needsUpdate = true;
+  t.repeat.set(rx, ry);
+  if (kind === 'path') {
+    return new THREE.MeshStandardMaterial({ map: t, color: 0xc4a36a, roughness: 0.92 });
+  }
+  return new THREE.MeshStandardMaterial({ map: t, roughness: 0.85 });
+}
 for (const rp of ramps) {
   const grp = new THREE.Group();
   // wedge: a box whose top face slopes from base to base+rise
@@ -301,12 +321,12 @@ for (const rp of ramps) {
     p.setY(i, p.getY(i) > 0 ? rp.base + rp.rise * (lz / rp.L) : rp.bottom);
   }
   wedge.computeVertexNormals();
-  const wm = new THREE.Mesh(wedge, rampMaterial(rp.W / 2, rp.L / 2));
+  const wm = new THREE.Mesh(wedge, rampMaterial(rp.W / 2, rp.L / 2, rp.kind));
   grp.add(wm);
   if (rp.PL > 0) {
     const top = rp.base + rp.rise;
     const hgt = top - rp.bottom;
-    const plat = new THREE.Mesh(new THREE.BoxGeometry(rp.PL, hgt, rp.PL), rampMaterial(rp.PL / 2, rp.PL / 2));
+    const plat = new THREE.Mesh(new THREE.BoxGeometry(rp.PL, hgt, rp.PL), rampMaterial(rp.PL / 2, rp.PL / 2, rp.kind));
     plat.position.set(0, rp.bottom + hgt / 2, rp.L + rp.PL / 2);
     grp.add(plat);
   }
@@ -374,6 +394,7 @@ const diamondDummy = new THREE.Object3D();
 let diamondMesh = null;
 let diamondGlow = null;
 let groundCover = null;
+let birds = null;
 let vegStats = { loaded: 0, trees: 0, bushes: 0, grass: 0, flowers: 0, treePts: [] };
 let score = 0, collected = 0, playStarted = false, elapsed = 0, won = false, bootReady = false;
 // look towards the first ramp
@@ -443,8 +464,8 @@ controls.addEventListener('lock', () => {
 controls.addEventListener('unlock', () => {
   if (won) return;
   overlay.classList.remove('hidden');
-  document.getElementById('sub').textContent = 'Paused';
-  document.getElementById('start').textContent = 'Click to resume';
+  document.getElementById('sub').textContent = 'PAUSED';
+  document.getElementById('start').textContent = 'CLICK TO RESUME';
 });
 if (DEBUG) overlay.classList.add('hidden');
 
@@ -902,6 +923,7 @@ function frame() {
   ocean.update(clock.elapsedTime, sunDir);
   if (bridge) bridge.update(clock.elapsedTime);
   if (groundCover) groundCover.update(clock.elapsedTime, camera.position, dt, terrainHeight);
+  if (birds) birds.update(dt);
   if (diamondMesh?.material) {
     diamondMesh.material.emissiveIntensity = 0.72 + 0.16 * Math.sin(clock.elapsedTime * 4.4);
   }
@@ -974,6 +996,13 @@ async function boot() {
   setLoad(0.93);
   buildTrampolines();
   buildDiamonds();
+  setLoad(0.96);
+  try {
+    birds = await createBirds(scene, { rand, count: LOW ? 6 : 8 });
+  } catch (err) {
+    console.warn('birds failed to load', err);
+    birds = { count: 0, update() {} };
+  }
   setLoad(1);
   window.game.counts = {
     trees: vegStats.trees,
@@ -985,11 +1014,15 @@ async function boot() {
     trampolines: trampolines.length,
     ramps: ramps.length,
     island2Gems: diamonds.filter((d) => Math.hypot(d.x - ISLAND2.x, d.z - ISLAND2.z) < ISLAND2.r + 4).length,
+    birds: birds.count,
     quality: LOW ? 'low' : 'high',
   };
   window.game.treePts = vegStats.treePts;
   window.game.groundCover = groundCover;
   window.game.bridge = bridge;
+  window.game.birds = birds;
+  window.game.HILL_A = HILL_A;
+  window.game.HILL_B = HILL_B;
   window.game.modelsLoaded = true;
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   if (loaderEl) loaderEl.classList.add('hidden');

@@ -18,11 +18,15 @@ Downloaded from [ambientCG](https://ambientcg.com) (CC0 1.0 Universal), compress
 - `public/textures/grass/` — Grass001
 - `public/textures/dirt/` — Ground033
 - `public/textures/rock/` — Rock020
-- `public/textures/sand/` — Ground003 (used as beach sand)
+- `public/textures/sand/` — Ground061 “Lightly Wet Sand”
 
 Water normal map:
 
 - `public/textures/waternormals.jpg` — three.js examples (`examples/textures/waternormals.jpg`), MIT
+
+## Birds
+
+Animated `Flamingo.glb`, `Parrot.glb`, and `Stork.glb` from the [three.js r170 examples](https://github.com/mrdoob/three.js/tree/r170/examples/models/gltf) (MIT), vendored in `public/models/birds/`.
 
 ## Fonts
 
@@ -30,4 +34,4 @@ Water normal map:
 
 ## Previously used (no longer shipped)
 
-Kenney Nature Kit and Quaternius Ultimate Nature Pack (both CC0) were used in an earlier low-poly version and have been replaced by ez-tree plus GPU grass.
+Kenney Nature Kit and Quaternius Ultimate Nature Pack (both CC0) were used in an earlier low-poly version and have been replaced by ez-tree plus CPU-snapped grass.

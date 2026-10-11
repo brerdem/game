@@ -25,16 +25,33 @@ function loadPBR(folder, repeat = 18) {
   };
 }
 
-export function bakeHeightTexture(terrainHeight, WORLD, size = 256) {
-  const data = new Uint8Array(size * size * 4);
+export function bakeHeightTexture(terrainHeight, WORLD, size = 512) {
+  const H = new Float32Array(size * size);
   for (let j = 0; j < size; j++) {
     for (let i = 0; i < size; i++) {
       const x = (i / (size - 1) - 0.5) * WORLD;
       const z = (j / (size - 1) - 0.5) * WORLD;
-      const h = terrainHeight(x, z);
+      H[j * size + i] = terrainHeight(x, z);
+    }
+  }
+  const data = new Uint8Array(size * size * 4);
+  const at = (i, j) => H[Math.min(size - 1, Math.max(0, j)) * size + Math.min(size - 1, Math.max(0, i))];
+  for (let j = 0; j < size; j++) {
+    for (let i = 0; i < size; i++) {
+      const h = at(i, j);
       const enc = Math.max(0, Math.min(255, Math.round((h + 8) * (255 / 40))));
+      const dx = at(i + 1, j) - at(i - 1, j);
+      const dz = at(i, j + 1) - at(i, j - 1);
+      const ny = 4 / Math.hypot(dx, 4, dz);
+      // Hard land mask: grass-ready ground only. Neighbours must also be
+      // above the beach so linear filtering cannot smear land onto the sea.
+      const land = h >= 2.05 && ny >= 0.80
+        && at(i - 1, j) >= 1.6 && at(i + 1, j) >= 1.6
+        && at(i, j - 1) >= 1.6 && at(i, j + 1) >= 1.6;
       const o = (j * size + i) * 4;
-      data[o] = data[o + 1] = data[o + 2] = enc;
+      data[o] = enc;
+      data[o + 1] = land ? 255 : 0;
+      data[o + 2] = enc;
       data[o + 3] = 255;
     }
   }
@@ -45,6 +62,7 @@ export function bakeHeightTexture(terrainHeight, WORLD, size = 256) {
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
   tex.minFilter = THREE.LinearFilter;
   tex.magFilter = THREE.LinearFilter;
+  tex.generateMipmaps = false;
   return tex;
 }
 
@@ -331,10 +349,10 @@ export function applyTerrainSplat(terrain) {
       vec2 uv2 = vWPos.xz * 0.047 + vec2(17.3, 9.1);
       vec3 grassC = mix(texture2D(tGrass, uv1).rgb, texture2D(tGrass, uv2).rgb, 0.38);
       vec3 dirtC = texture2D(tDirt, uv1 * 0.82).rgb;
-      vec3 sandC = texture2D(tSand, uv1 * 0.68).rgb;
+      vec3 sandC = texture2D(tSand, uv1 * 0.52).rgb * vec3(1.14, 1.04, 0.82);
       vec3 rockC = texture2D(tRock, uv1 * 0.48).rgb;
       float h = vWPos.y;
-      float sandW = 1.0 - smoothstep(0.25, 2.05, h);
+      float sandW = 1.0 - smoothstep(0.0, 4.1, h);
       float rockW = smoothstep(0.88, 0.58, vNy);
       float dirtN = fract(sin(dot(vWPos.xz * 0.07, vec2(12.9898, 78.233))) * 43758.5453);
       dirtN = mix(dirtN, fract(sin(dot(vWPos.xz * 0.021, vec2(91.13, 47.7))) * 23421.6), 0.5);
@@ -346,7 +364,7 @@ export function applyTerrainSplat(terrain) {
       diffuseColor.rgb = col;`
     );
   };
-  mat.customProgramCacheKey = () => 'terrain-splat-v3';
+  mat.customProgramCacheKey = () => 'terrain-splat-v5';
   terrain.material.dispose();
   terrain.material = mat;
   terrain.material.needsUpdate = true;

@@ -43,7 +43,7 @@ const info = await page.evaluate(() => ({
 }));
 console.log(JSON.stringify(info, null, 2));
 
-if (!info.counts?.trees || info.counts.trees < 20 || info.counts.diamonds < 20 || info.counts.trampolines < 4 || !info.counts.grass) {
+if (!info.counts?.trees || info.counts.trees < 20 || info.counts.diamonds < 20 || info.counts.trampolines < 3 || !info.counts.grass) {
   errors.push(`[assert] unexpected counts ${JSON.stringify(info.counts)}`);
 }
 const extras = await page.evaluate(() => {

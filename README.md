@@ -1,6 +1,6 @@
 # Island FPS (Three.js + Vite)
 
-A first-person island explorer: collect every diamond, bounce on trampolines, and wander a forest of real CC0 plant models.
+A first-person island explorer: collect every ruby, bounce on trampolines, and wander a forest of procedural trees on textured terrain.
 
 **Play it live:** https://brerdem.github.io/game/
 
@@ -14,7 +14,7 @@ A first-person island explorer: collect every diamond, bounce on trampolines, an
 - **Shift** to sprint
 - **Space** to jump
 - **Esc** to pause / release the mouse
-- Walk into a **diamond** to collect it
+- Walk into a **ruby** to collect it
 - Land on a **trampoline** for a super jump (the only way to reach the high gems)
 
 The HUD shows gems collected, score, and a timer that starts on the first click and pauses while paused. Collect them all to win.
@@ -26,8 +26,10 @@ The HUD shows gems collected, score, and a timer that starts on the first click 
 - `node scripts/check.mjs 'http://127.0.0.1:4173/?debug' screenshot.png` – headless check + screenshot
 - `node scripts/physics.mjs` – ramp / jump / shoreline physics test
 
-URL flags: `?debug` (hide overlay, keyboard works without pointer lock), `?seed=N`, `?yaw=`, `?pitch=`
+URL flags: `?debug` (hide overlay, keyboard works without pointer lock), `?low` (fewer blades/trees, lower shadows), `?seed=N`, `?yaw=`, `?pitch=`
+
+Quality also drops automatically if the frame rate stays below ~26 fps.
 
 ## Credits
 
-Vegetation models are CC0 (Kenney Nature Kit and Quaternius Ultimate Nature Pack). See [public/models/CREDITS.md](public/models/CREDITS.md).
+See [CREDITS.md](CREDITS.md) for libraries, textures, and licenses.

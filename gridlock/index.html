@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Gridlock</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232176d4'/%3E%3C/svg%3E" />
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #121820; }
+  body {
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    overscroll-behavior: none;
+    user-select: none;
+  }
+  #stage {
+    position: relative;
+    width: min(100vw, calc(100dvh * 9 / 16));
+    height: min(100dvh, calc(100vw * 16 / 9));
+    max-width: 520px;
+    background: #d7e2ee;
+    overflow: hidden;
+    box-shadow: 0 18px 70px rgba(0,0,0,.45);
+  }
+  canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    background: rgba(16, 24, 34, .46);
+    text-align: center;
+    padding: 24px;
+  }
+  .overlay.hidden { display: none; }
+  h1 {
+    margin: 0;
+    color: #f4f8fc;
+    font-size: clamp(46px, 11vw, 68px);
+    letter-spacing: .08em;
+    text-shadow: 0 4px 0 #1d4e89;
+  }
+  .overlay p { margin: 0; color: #f4f8fc; font-size: 22px; font-weight: 700; }
+  button {
+    font: inherit;
+    font-size: 28px;
+    font-weight: 700;
+    color: white;
+    background: #2176d4;
+    border: 0;
+    border-radius: 999px;
+    padding: 14px 46px;
+    cursor: pointer;
+    box-shadow: 0 6px 0 #124e90;
+  }
+  button:active { transform: translateY(3px); box-shadow: 0 3px 0 #124e90; }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <canvas id="c"></canvas>
+    <div id="start" class="overlay">
+      <h1>GRIDLOCK</h1>
+      <button type="button" id="startBtn">Start</button>
+    </div>
+    <div id="over" class="overlay hidden">
+      <h1>STUCK</h1>
+      <p id="finalScore">0</p>
+      <button type="button" id="retryBtn">Restart</button>
+    </div>
+  </div>
+  <script type="module" src="./game.js"></script>
+</body>
+</html>

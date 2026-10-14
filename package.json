@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:gpu": "vite --config vite.gpu.config.js --port 5174 --host 127.0.0.1",
-    "build": "vite build && vite build --config vite.gpu.config.js",
+    "build": "vite build && vite build --config vite.gpu.config.js && node scripts/copy-puzzles.mjs",
     "build:gl": "vite build",
     "build:gpu": "vite build --config vite.gpu.config.js",
     "preview": "vite preview --port 4173 --host 127.0.0.1"

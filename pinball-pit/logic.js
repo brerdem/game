@@ -5,17 +5,38 @@ export const VIEW_W = 390;
 export const VIEW_H = 693;
 export const COLS = 7;
 export const SAFE_ROWS = 8;
-export const CELL = 46;
-export const BOARD = {
-  x: (VIEW_W - COLS * CELL) / 2,
-  y: 78,
-  w: COLS * CELL,
-  h: SAFE_ROWS * CELL,
-};
-export const LAUNCH_Y = BOARD.y + BOARD.h + 76;
-export const COLLECT_Y = BOARD.y + BOARD.h + 16;
-export const BALL_R = 6.4;
-export const SPEED = 372;
+
+/** Board geometry for a viewport. Cells stay square; the pit grows to fill the view. */
+export function fitLayout(w = VIEW_W, h = VIEW_H) {
+  const hud = Math.max(54, Math.min(88, h * 0.08));
+  const footer = Math.max(46, Math.min(92, h * 0.1));
+  const marginX = Math.max(12, Math.min(40, w * 0.04));
+  const availW = Math.max(80, w - marginX * 2);
+  const availH = Math.max(80, h - hud - footer);
+  const cell = Math.max(16, Math.min(availW / COLS, availH / (SAFE_ROWS + 1.2)));
+  const boardW = cell * COLS;
+  const boardH = cell * SAFE_ROWS;
+  const x = (w - boardW) / 2;
+  const y = hud + Math.max(0, (availH - boardH - cell * 1.05) / 2);
+  return {
+    w,
+    h,
+    cell,
+    ballR: Math.max(4.2, cell * 0.15),
+    speed: cell * 8.1,
+    board: { x, y, w: boardW, h: boardH },
+    launchY: Math.min(h - 16, y + boardH + cell * 0.92),
+    collectY: y + boardH + cell * 0.26,
+  };
+}
+
+const DEFAULT_LAYOUT = fitLayout(VIEW_W, VIEW_H);
+export const CELL = DEFAULT_LAYOUT.cell;
+export const BOARD = DEFAULT_LAYOUT.board;
+export const LAUNCH_Y = DEFAULT_LAYOUT.launchY;
+export const COLLECT_Y = DEFAULT_LAYOUT.collectY;
+export const BALL_R = DEFAULT_LAYOUT.ballR;
+export const SPEED = DEFAULT_LAYOUT.speed;
 
 export const CARDS = [
   { id: 'split', title: 'Split Shot', text: 'A ball splits the first time it hits a block.' },
@@ -40,25 +61,56 @@ function clamp(v, a, b) {
   return Math.max(a, Math.min(b, v));
 }
 
-function renorm(ball) {
+function renorm(ball, speed) {
   const m = Math.hypot(ball.vx, ball.vy) || 1;
-  ball.vx = (ball.vx / m) * SPEED;
-  ball.vy = (ball.vy / m) * SPEED;
+  ball.vx = (ball.vx / m) * speed;
+  ball.vy = (ball.vy / m) * speed;
 }
 
-export function blockRect(block, visualRow = block.row) {
-  const pad = 3.5;
+export function blockRect(block, visualRow = block.row, layout = DEFAULT_LAYOUT) {
+  const cell = layout.cell;
+  const pad = Math.max(2, cell * 0.07);
   return {
-    x: BOARD.x + block.col * CELL + pad,
-    y: BOARD.y + visualRow * CELL + pad,
-    w: CELL * block.span - pad * 2,
-    h: CELL - pad * 2,
+    x: layout.board.x + block.col * cell + pad,
+    y: layout.board.y + visualRow * cell + pad,
+    w: cell * block.span - pad * 2,
+    h: cell - pad * 2,
   };
 }
 
-export function blockCenter(block, visualRow = block.row) {
-  const rect = blockRect(block, visualRow);
+export function blockCenter(block, visualRow = block.row, layout = DEFAULT_LAYOUT) {
+  const rect = blockRect(block, visualRow, layout);
   return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+}
+
+export function applyLayout(state, w, h) {
+  const next = fitLayout(w, h);
+  const prev = state.layout;
+  if (prev && prev.board.w > 0) {
+    const sx = next.board.w / prev.board.w;
+    const sy = next.board.h / prev.board.h;
+    const mapX = (x) => next.board.x + (x - prev.board.x) * sx;
+    const mapY = (y) => next.board.y + (y - prev.board.y) * sy;
+    state.originX = clamp(mapX(state.originX), next.board.x + next.cell * 0.4, next.board.x + next.board.w - next.cell * 0.4);
+    for (const ball of state.balls) {
+      ball.x = mapX(ball.x);
+      ball.y = mapY(ball.y);
+      ball.r = next.ballR;
+      renorm(ball, next.speed);
+      ball.trail = ball.trail.map((p) => ({ x: mapX(p.x), y: mapY(p.y) }));
+    }
+    for (const p of state.particles) {
+      p.x = mapX(p.x);
+      p.y = mapY(p.y);
+    }
+    for (const f of state.floats) {
+      f.x = mapX(f.x);
+      f.y = mapY(f.y);
+    }
+  } else {
+    state.originX = next.board.x + next.board.w / 2;
+  }
+  state.layout = next;
 }
 
 function pickColor(state) {
@@ -132,7 +184,7 @@ export function createRun(seed = 1) {
     balls: [],
     spawnQueue: [],
     pendingBalls: [],
-    originX: BOARD.x + BOARD.w / 2,
+    originX: 0,
     aim: -Math.PI / 2,
     nextRowId: 1,
     nextBlockId: 1,
@@ -150,7 +202,9 @@ export function createRun(seed = 1) {
     shake: 0,
     nextOrigin: null,
     over: false,
+    layout: fitLayout(VIEW_W, VIEW_H),
   };
+  state.originX = state.layout.board.x + state.layout.board.w / 2;
   addRow(state, 0, false);
   addRow(state, 1, false);
   addRow(state, 2, false);
@@ -158,7 +212,7 @@ export function createRun(seed = 1) {
 }
 
 export function aimToward(state, x, y) {
-  let ang = Math.atan2(y - LAUNCH_Y, x - state.originX);
+  let ang = Math.atan2(y - state.layout.launchY, x - state.originX);
   if (ang > 0) ang = x < state.originX ? -Math.PI + 0.2 : -0.2;
   state.aim = clamp(ang, -Math.PI + 0.18, -0.18);
 }
@@ -219,7 +273,7 @@ function destroyBlock(state, block) {
   block.dead = true;
   block.hp = 0;
   state.score += block.kind === 'boss' ? 400 : 50;
-  const c = blockCenter(block);
+  const c = blockCenter(block, block.row, state.layout);
   burst(state, c.x, c.y, PALETTE[block.color], block.kind === 'boss' ? 18 : 10, block.kind === 'boss' ? 180 : 110);
   state.shake = Math.max(state.shake, block.kind === 'boss' ? 9 : 4);
   if (state.upgrades.pop) {
@@ -245,7 +299,7 @@ function collectPickup(state, block) {
   block.dead = true;
   state.pendingBalls.push(block.color);
   state.score += 40;
-  const c = blockCenter(block);
+  const c = blockCenter(block, block.row, state.layout);
   burst(state, c.x, c.y, '#fff', 8, 90);
   floatText(state, c.x, c.y - 8, '+ball', PALETTE[block.color]);
   checkRows(state);
@@ -253,11 +307,11 @@ function collectPickup(state, block) {
 
 function zap(state, ball) {
   let best = null;
-  let bestD = 230;
+  let bestD = state.layout.cell * 5;
   for (const block of state.blocks) {
     if (block.dead || block.kind === 'pickup') continue;
     if (ball.touch && ball.touch.has(block.id)) continue;
-    const c = blockCenter(block);
+    const c = blockCenter(block, block.row, state.layout);
     const d = Math.hypot(c.x - ball.x, c.y - ball.y);
     if (d < bestD) {
       bestD = d;
@@ -265,7 +319,7 @@ function zap(state, ball) {
     }
   }
   if (!best) return;
-  const c = blockCenter(best);
+  const c = blockCenter(best, best.row, state.layout);
   state.bolts.push({ x1: ball.x, y1: ball.y, x2: c.x, y2: c.y, life: 0.16 });
   hurt(state, best, 1 + state.upgrades.damage, c.x, c.y - 10);
 }
@@ -278,7 +332,7 @@ function onHit(state, ball, block) {
   }
   const same = ball.color === block.color;
   const amount = (1 + state.upgrades.damage) * (same ? 2 : 1);
-  const c = blockCenter(block);
+  const c = blockCenter(block, block.row, state.layout);
   hurt(state, block, amount, c.x, c.y - 12);
   if (same) burst(state, ball.x, ball.y, '#fff', 4, 70);
   if (state.upgrades.split > 0 && !ball.child && !ball.splitDone && state.balls.length < 30) {
@@ -294,13 +348,14 @@ function onHit(state, ball, block) {
 }
 
 function makeBall(state, color, angle, child, x, y) {
+  const layout = state.layout;
   return {
     x: x ?? state.originX,
-    y: y ?? LAUNCH_Y,
-    vx: Math.cos(angle) * SPEED,
-    vy: Math.sin(angle) * SPEED,
+    y: y ?? layout.launchY,
+    vx: Math.cos(angle) * layout.speed,
+    vy: Math.sin(angle) * layout.speed,
     color,
-    r: BALL_R,
+    r: layout.ballR,
     child: !!child,
     splitDone: false,
     bounces: 0,
@@ -329,9 +384,10 @@ function bounce(ball) {
 }
 
 function resolveWalls(state, ball) {
-  const left = BOARD.x + ball.r;
-  const right = BOARD.x + BOARD.w - ball.r;
-  const top = BOARD.y + ball.r;
+  const board = state.layout.board;
+  const left = board.x + ball.r;
+  const right = board.x + board.w - ball.r;
+  const top = board.y + ball.r;
   if (ball.x < left) {
     ball.x = left;
     if (ball.vx < 0) ball.vx = Math.abs(ball.vx);
@@ -361,7 +417,7 @@ function resolveWalls(state, ball) {
   } else ball.wall.top = false;
 }
 
-function separate(ball, rect, reflect) {
+function separate(ball, rect, reflect, speed) {
   const cx = clamp(ball.x, rect.x, rect.x + rect.w);
   const cy = clamp(ball.y, rect.y, rect.y + rect.h);
   let dx = ball.x - cx;
@@ -405,7 +461,7 @@ function separate(ball, rect, reflect) {
   if (dot < 0) {
     ball.vx -= 2 * dot * nx;
     ball.vy -= 2 * dot * ny;
-    renorm(ball);
+    renorm(ball, speed);
   }
 }
 
@@ -420,7 +476,7 @@ function hitsRect(ball, rect) {
 function resolveBlocks(state, ball) {
   for (const block of state.blocks) {
     if (block.dead || block.row >= SAFE_ROWS) continue;
-    const rect = blockRect(block);
+    const rect = blockRect(block, block.row, state.layout);
     if (!hitsRect(ball, rect)) {
       ball.touch.delete(block.id);
       continue;
@@ -431,7 +487,7 @@ function resolveBlocks(state, ball) {
       ball.touch.add(block.id);
       continue;
     }
-    separate(ball, rect, first);
+    separate(ball, rect, first, state.layout.speed);
     if (first) {
       ball.touch.add(block.id);
       onHit(state, ball, block);
@@ -442,7 +498,9 @@ function resolveBlocks(state, ball) {
 function collect(state, ball) {
   ball.alive = false;
   if (state.nextOrigin == null) {
-    state.nextOrigin = clamp(ball.x, BOARD.x + 18, BOARD.x + BOARD.w - 18);
+    const board = state.layout.board;
+    const inset = state.layout.cell * 0.4;
+    state.nextOrigin = clamp(ball.x, board.x + inset, board.x + board.w - inset);
   }
 }
 
@@ -454,17 +512,18 @@ function stepBall(state, ball, dt) {
   for (let s = 0; s < steps; s++) {
     ball.x += ball.vx * h;
     ball.y += ball.vy * h;
-    if (Math.abs(ball.vy) < 28) ball.flat += h;
+    const speed = state.layout.speed;
+    if (Math.abs(ball.vy) < speed * 0.075) ball.flat += h;
     else ball.flat = 0;
     if (ball.flat > 0.4) {
-      ball.vy += 140;
+      ball.vy += speed * 0.38;
       ball.flat = 0;
-      renorm(ball);
+      renorm(ball, speed);
     }
     resolveWalls(state, ball);
     resolveBlocks(state, ball);
-    if (ball.y < BOARD.y + BOARD.h) ball.entered = true;
-    if (ball.entered && ball.vy > 0 && ball.y > COLLECT_Y) {
+    if (ball.y < state.layout.board.y + state.layout.board.h) ball.entered = true;
+    if (ball.entered && ball.vy > 0 && ball.y > state.layout.collectY) {
       collect(state, ball);
       return;
     }
@@ -595,8 +654,9 @@ function easeOut(t) {
 
 /** Aim guide. Stops at the floor or after a few bounces. */
 export function aimPath(state) {
+  const board = state.layout.board;
   let x = state.originX;
-  let y = LAUNCH_Y;
+  let y = state.layout.launchY;
   let dx = Math.cos(state.aim);
   let dy = Math.sin(state.aim);
   const pts = [{ x, y }];
@@ -606,11 +666,11 @@ export function aimPath(state) {
       if (!hit || hit.t < 1.2) return;
       if (!best || hit.t < best.t) best = hit;
     };
-    if (dx > 0) consider(rayPoint(x, y, dx, dy, (BOARD.x + BOARD.w - x) / dx, -1, 0));
-    if (dx < 0) consider(rayPoint(x, y, dx, dy, (BOARD.x - x) / dx, 1, 0));
-    if (dy < 0) consider(rayPoint(x, y, dx, dy, (BOARD.y - y) / dy, 0, 1));
+    if (dx > 0) consider(rayPoint(x, y, dx, dy, (board.x + board.w - x) / dx, -1, 0));
+    if (dx < 0) consider(rayPoint(x, y, dx, dy, (board.x - x) / dx, 1, 0));
+    if (dy < 0) consider(rayPoint(x, y, dx, dy, (board.y - y) / dy, 0, 1));
     if (dy > 0) {
-      const t = (COLLECT_Y - y) / dy;
+      const t = (state.layout.collectY - y) / dy;
       if (t > 1 && (!best || t < best.t)) {
         pts.push({ x: x + dx * t, y: y + dy * t });
         break;
@@ -618,7 +678,7 @@ export function aimPath(state) {
     }
     for (const block of state.blocks) {
       if (block.dead || block.row >= SAFE_ROWS) continue;
-      consider(rayAabb(x, y, dx, dy, blockRect(block)));
+      consider(rayAabb(x, y, dx, dy, blockRect(block, block.row, state.layout)));
     }
     if (!best) {
       pts.push({ x: x + dx * 80, y: y + dy * 80 });

@@ -1,7 +1,7 @@
 import { CAR_COLORS, DIRS, canExit, generateLevel, stepsToExit } from './logic.js';
 
-const W = 390;
-const H = 693;
+let W = 800;
+let H = 900;
 const stage = document.getElementById('stage');
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
@@ -48,15 +48,19 @@ function gameOver() {
 
 function metrics() {
   const size = level?.size || 4;
-  const top = 84;
-  const cell = Math.floor(Math.min((W - 28) / (size + 2), (H - top - 24) / (size + 2)));
+  const hud = Math.max(64, Math.min(96, H * 0.09));
+  const margin = Math.max(12, Math.min(28, Math.min(W, H) * 0.03));
+  const availW = W - margin * 2;
+  const availH = H - hud - margin;
+  const cell = Math.floor(Math.min(availW, availH) / (size + 1.35));
   const board = cell * size;
   return {
     cell,
     x: (W - board) / 2,
-    y: top + Math.max(8, (H - top - board) / 2 - 6),
+    y: hud + (availH - board) / 2,
     board,
     size,
+    hud,
   };
 }
 
@@ -211,7 +215,8 @@ function ease(t) {
 function render() {
   geom = metrics();
   const g = geom;
-  ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+  const scale = canvas.width / W;
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = flash > 0 ? '#f3c2c2' : '#d7e2ee';
   ctx.fillRect(0, 0, W, H);
@@ -222,11 +227,12 @@ function render() {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.font = '700 22px "Trebuchet MS", "Segoe UI", sans-serif';
-  ctx.fillText(`Lv ${levelNum}`, W / 2, 36);
+  const hudY = Math.max(36, g.hud * 0.45);
+  ctx.font = `700 ${Math.round(Math.max(22, Math.min(34, W * 0.03)))}px "Trebuchet MS", "Segoe UI", sans-serif`;
+  ctx.fillText(`Lv ${levelNum}`, W / 2, hudY);
   ctx.textAlign = 'right';
-  ctx.font = '700 20px "Trebuchet MS", "Segoe UI", sans-serif';
-  ctx.fillText(String(score), W - 16, 36);
-  for (let i = 0; i < 3; i++) drawHeart(28 + i * 28, 36, i < hearts);
+  ctx.fillText(String(score), W - 20, hudY);
+  for (let i = 0; i < 3; i++) drawHeart(28 + i * 32, hudY, i < hearts);
 
   ctx.fillStyle = '#f7fbff';
   roundRect(g.x - 6, g.y - 6, g.board + 12, g.board + 12, 14);
@@ -290,8 +296,9 @@ function render() {
   }
 
   if (phase === 'clear') {
+    const bw = Math.min(280, W - 48);
     ctx.fillStyle = 'rgba(23,50,79,.88)';
-    roundRect(78, H / 2 - 46, 234, 92, 18);
+    roundRect((W - bw) / 2, H / 2 - 46, bw, 92, 18);
     ctx.fill();
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';
@@ -343,8 +350,10 @@ function carAt(x, y) {
 function resize() {
   const rect = stage.getBoundingClientRect();
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  canvas.width = Math.max(1, Math.round(rect.width * dpr));
-  canvas.height = Math.max(1, Math.round(rect.height * dpr));
+  W = Math.max(1, rect.width);
+  H = Math.max(1, rect.height);
+  canvas.width = Math.max(1, Math.round(W * dpr));
+  canvas.height = Math.max(1, Math.round(H * dpr));
 }
 
 document.getElementById('startBtn').addEventListener('click', (e) => {

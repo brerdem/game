@@ -10,8 +10,8 @@ import {
   makePicture,
 } from './logic.js';
 
-const W = 390;
-const H = 693;
+let W = 800;
+let H = 900;
 const stage = document.getElementById('stage');
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
@@ -153,10 +153,27 @@ function finishAnim() {
 function cellGeom() {
   const rows = grid.length || 1;
   const cols = grid[0]?.length || 1;
-  const size = Math.min(336 / cols, 348 / rows, 46);
+  const hud = Math.max(56, Math.min(84, H * 0.08));
+  const dockH = Math.max(78, Math.min(140, H * 0.15));
+  const handH = Math.max(92, Math.min(160, H * 0.17));
+  const gap = Math.max(14, Math.min(22, H * 0.02));
+  const availW = W - Math.max(28, W * 0.05);
+  const availH = H - hud - dockH - handH - gap * 3;
+  const size = Math.max(8, Math.min(availW / cols, availH / rows));
   const gw = cols * size;
   const gh = rows * size;
-  return { size, gx: (W - gw) / 2, gy: 86 + (348 - gh) / 2, rows, cols };
+  return {
+    size,
+    gx: (W - gw) / 2,
+    gy: hud + Math.max(0, (availH - gh) / 2),
+    rows,
+    cols,
+    dockY: H - gap - handH - gap - dockH,
+    handY: H - gap - handH,
+    dockH,
+    handH,
+    hud,
+  };
 }
 
 function cellRect(r, c) {
@@ -181,19 +198,19 @@ function spoolCenter(kind, index) {
 }
 
 function dockBox(index) {
-  const w = 100;
-  const h = 86;
-  const gap = 12;
+  const g = layout || cellGeom();
+  const gap = Math.max(12, W * 0.02);
+  const w = Math.min(g.dockH * 1.45, (W - 32 - gap * 2) / 3);
   const total = w * 3 + gap * 2;
-  return { x: (W - total) / 2 + index * (w + gap), y: 468, w, h };
+  return { x: (W - total) / 2 + index * (w + gap), y: g.dockY, w, h: g.dockH };
 }
 
 function handBox(index) {
-  const w = 108;
-  const h = 112;
-  const gap = 14;
+  const g = layout || cellGeom();
+  const gap = Math.max(12, W * 0.02);
+  const w = Math.min(g.handH * 1.2, (W - 32 - gap * 2) / 3);
   const total = w * 3 + gap * 2;
-  return { x: (W - total) / 2 + index * (w + gap), y: 566, w, h };
+  return { x: (W - total) / 2 + index * (w + gap), y: g.handY, w, h: g.handH };
 }
 
 function drawSpool(box, color, capacity, selected, scale = 1) {
@@ -252,7 +269,8 @@ function render() {
   layout = cellGeom();
   hits = [];
   const exposed = new Set(exposedCells(grid).map((cell) => `${cell.r},${cell.c}`));
-  ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+  const scale = canvas.width / W;
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = '#f6efe6';
   ctx.fillRect(0, 0, W, H);
@@ -318,7 +336,7 @@ function render() {
   ctx.fillStyle = '#8a6552';
   ctx.textAlign = 'left';
   ctx.font = '700 13px "Trebuchet MS", "Segoe UI", sans-serif';
-  ctx.fillText('DOCK', 18, 456);
+  ctx.fillText('DOCK', 18, g.dockY - 8);
 
   for (let i = 0; i < 3; i++) {
     const box = dockBox(i);
@@ -355,15 +373,18 @@ function render() {
   }
 
   if (banner) {
+    const bw = Math.min(320, W - 48);
+    const bx = (W - bw) / 2;
+    const by = H * 0.38;
     ctx.fillStyle = 'rgba(42,33,28,.78)';
-    roundRect(70, 250, 250, 90, 20);
+    roundRect(bx, by, bw, 90, 20);
     ctx.fill();
     ctx.fillStyle = '#fffaf4';
     ctx.textAlign = 'center';
     ctx.font = '700 28px "Trebuchet MS", "Segoe UI", sans-serif';
-    ctx.fillText('CLEARED', W / 2, 286);
+    ctx.fillText('CLEARED', W / 2, by + 36);
     ctx.font = '700 16px "Trebuchet MS", "Segoe UI", sans-serif';
-    ctx.fillText(`${banner.title}  ·  x${combo}`, W / 2, 314);
+    ctx.fillText(`${banner.title}  ·  x${combo}`, W / 2, by + 64);
   }
 
   ctx.restore();
@@ -456,8 +477,10 @@ function hitAt(x, y) {
 function resize() {
   const rect = stage.getBoundingClientRect();
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  canvas.width = Math.max(1, Math.round(rect.width * dpr));
-  canvas.height = Math.max(1, Math.round(rect.height * dpr));
+  W = Math.max(1, rect.width);
+  H = Math.max(1, rect.height);
+  canvas.width = Math.max(1, Math.round(W * dpr));
+  canvas.height = Math.max(1, Math.round(H * dpr));
 }
 
 function frame(now) {

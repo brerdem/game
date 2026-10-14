@@ -1,9 +1,5 @@
 import {
   PALETTE,
-  VIEW_W as W,
-  VIEW_H as H,
-  BOARD,
-  LAUNCH_Y,
   SAFE_ROWS,
   createRun,
   update,
@@ -15,6 +11,7 @@ import {
   blockRect,
   visualRow,
   aimPath,
+  applyLayout,
 } from './logic.js';
 
 const stage = document.getElementById('stage');
@@ -57,7 +54,11 @@ function sync() {
 }
 
 function render() {
-  ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+  const L = state.layout;
+  const W = L.w;
+  const H = L.h;
+  const scale = canvas.width / W;
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = '#12152b';
   ctx.fillRect(0, 0, W, H);
@@ -89,21 +90,22 @@ function render() {
   ctx.fillStyle = '#ffb703';
   ctx.fillText(tags.join('   '), 16, 52);
 
+  const board = L.board;
   ctx.fillStyle = '#0c1024';
-  roundRect(BOARD.x - 8, BOARD.y - 8, BOARD.w + 16, BOARD.h + 28, 16);
+  roundRect(board.x - 8, board.y - 8, board.w + 16, board.h + L.cell * 0.7, 16);
   ctx.fill();
   ctx.strokeStyle = 'rgba(255,80,90,.85)';
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.moveTo(BOARD.x, BOARD.y + BOARD.h);
-  ctx.lineTo(BOARD.x + BOARD.w, BOARD.y + BOARD.h);
+  ctx.moveTo(board.x, board.y + board.h);
+  ctx.lineTo(board.x + board.w, board.y + board.h);
   ctx.stroke();
 
   for (const block of state.blocks) {
     if (block.dead) continue;
     const row = visualRow(state, block);
     if (row > SAFE_ROWS + 0.2) continue;
-    const rect = blockRect(block, row);
+    const rect = blockRect(block, row, L);
     const color = PALETTE[block.color % PALETTE.length];
     ctx.fillStyle = 'rgba(0,0,0,.28)';
     roundRect(rect.x, rect.y + 4, rect.w, rect.h, 8);
@@ -114,11 +116,12 @@ function render() {
     ctx.fillStyle = '#102033';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    const label = Math.max(14, rect.h * 0.42);
     if (block.kind === 'pickup') {
-      ctx.font = '700 18px "Trebuchet MS", "Segoe UI", sans-serif';
+      ctx.font = `700 ${Math.round(label)}px "Trebuchet MS", "Segoe UI", sans-serif`;
       ctx.fillText('+', rect.x + rect.w / 2, rect.y + rect.h / 2 + 1);
     } else {
-      ctx.font = `700 ${block.span > 1 ? 22 : 16}px "Trebuchet MS", "Segoe UI", sans-serif`;
+      ctx.font = `700 ${Math.round(block.span > 1 ? label * 1.15 : label)}px "Trebuchet MS", "Segoe UI", sans-serif`;
       ctx.fillText(String(Math.max(0, block.hp)), rect.x + rect.w / 2, rect.y + rect.h / 2 + 1);
     }
   }
@@ -182,7 +185,7 @@ function render() {
   ctx.beginPath();
   const ang = state.aim;
   const lx = state.originX;
-  const ly = LAUNCH_Y;
+  const ly = L.launchY;
   ctx.moveTo(lx + Math.cos(ang) * 16, ly + Math.sin(ang) * 16);
   ctx.lineTo(lx + Math.cos(ang + 2.4) * 12, ly + Math.sin(ang + 2.4) * 12);
   ctx.lineTo(lx + Math.cos(ang - 2.4) * 12, ly + Math.sin(ang - 2.4) * 12);
@@ -192,10 +195,11 @@ function render() {
   const dots = state.magazine;
   const gap = Math.min(16, 280 / Math.max(1, dots.length));
   const startX = W / 2 - ((dots.length - 1) * gap) / 2;
+  const dotY = H - Math.max(22, L.cell * 0.42);
   dots.forEach((color, i) => {
     ctx.fillStyle = PALETTE[color];
     ctx.beginPath();
-    ctx.arc(startX + i * gap, 640, 6, 0, Math.PI * 2);
+    ctx.arc(startX + i * gap, dotY, Math.max(5, L.cell * 0.13), 0, Math.PI * 2);
     ctx.fill();
   });
 
@@ -205,21 +209,28 @@ function render() {
 function pointerPos(e) {
   const rect = canvas.getBoundingClientRect();
   return {
-    x: ((e.clientX - rect.left) / rect.width) * W,
-    y: ((e.clientY - rect.top) / rect.height) * H,
+    x: ((e.clientX - rect.left) / rect.width) * state.layout.w,
+    y: ((e.clientY - rect.top) / rect.height) * state.layout.h,
   };
 }
 
 function resize() {
   const rect = stage.getBoundingClientRect();
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  canvas.width = Math.max(1, Math.round(rect.width * dpr));
-  canvas.height = Math.max(1, Math.round(rect.height * dpr));
+  const w = Math.max(1, rect.width);
+  const h = Math.max(1, rect.height);
+  canvas.width = Math.max(1, Math.round(w * dpr));
+  canvas.height = Math.max(1, Math.round(h * dpr));
+  if (!state.layout || Math.abs(state.layout.w - w) > 0.5 || Math.abs(state.layout.h - h) > 0.5) {
+    applyLayout(state, w, h);
+  }
 }
 
 function begin() {
   started = true;
   state = createRun((Date.now() ^ 0x9e3779b1) >>> 0);
+  const rect = stage.getBoundingClientRect();
+  applyLayout(state, Math.max(1, rect.width), Math.max(1, rect.height));
   startEl.classList.add('hidden');
   overEl.classList.add('hidden');
 }

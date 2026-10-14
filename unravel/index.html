@@ -59,6 +59,44 @@
     box-shadow: 0 6px 0 #a83218;
   }
   button:active { transform: translateY(3px); box-shadow: 0 3px 0 #a83218; }
+  button.secondary {
+    font-size: 18px;
+    padding: 10px 28px;
+    color: #fffaf4;
+    background: transparent;
+    border: 2px solid rgba(255,250,244,.85);
+    box-shadow: none;
+  }
+  button.secondary:active { transform: none; box-shadow: none; background: rgba(255,250,244,.12); }
+  .help { z-index: 6; background: rgba(28, 16, 12, .66); }
+  .sheet {
+    width: min(92%, 460px);
+    max-height: min(84%, 680px);
+    overflow: auto;
+    text-align: left;
+    background: #fff8f1;
+    color: #2a211c;
+    border-radius: 22px;
+    padding: 22px 22px 18px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.35);
+    user-select: text;
+  }
+  .sheet h2 {
+    margin: 0 0 12px;
+    text-align: center;
+    font-size: 28px;
+    letter-spacing: .04em;
+    color: #2a211c;
+  }
+  .help .sheet p {
+    margin: 0 0 10px;
+    color: #2a211c;
+    font-size: 15px;
+    line-height: 1.4;
+    font-weight: 500;
+    text-align: left;
+  }
+  .sheet button { width: 100%; margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -67,6 +105,19 @@
     <div id="start" class="overlay">
       <h1>UNRAVEL</h1>
       <button type="button" id="startBtn">Start</button>
+      <button type="button" class="secondary" id="helpBtn">How to play</button>
+    </div>
+    <div id="help" class="overlay help hidden">
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+        <h2 id="helpTitle">How to play</h2>
+        <p><strong>Goal.</strong> Clear the pixel picture. Each one you finish is replaced by a bigger picture with more colors.</p>
+        <p><strong>A turn.</strong> You are dealt three colored spools. The number is how many pixels that spool can eat. It only reaches the bottom-most remaining pixel in each column, then the pixel above it once that one is gone.</p>
+        <p><strong>Dock.</strong> Yarn left over parks in one of three slots. Use a docked spool later the same way. Clearing the picture spends the spool and loads the next one.</p>
+        <p><strong>Lose.</strong> The dock is full and no spool in your hand or the dock can eat a pixel.</p>
+        <p><strong>Score.</strong> Each pixel is worth 10 × your combo. The combo starts at 1 and rises every picture you clear, and finishing a picture adds a bonus. After a loss, the next deal is a little friendlier.</p>
+        <p><strong>Controls.</strong> Click a spool. Left and right select, up and down move between your hand and the dock. Enter or Space plays the selected spool.</p>
+        <button type="button" id="helpClose">Close</button>
+      </div>
     </div>
     <div id="over" class="overlay hidden">
       <h1>OVER</h1>

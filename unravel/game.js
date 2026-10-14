@@ -17,6 +17,7 @@ const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 const startEl = document.getElementById('start');
 const overEl = document.getElementById('over');
+const helpEl = document.getElementById('help');
 const finalScore = document.getElementById('finalScore');
 
 let started = false;
@@ -492,6 +493,19 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+document.getElementById('helpBtn').addEventListener('click', (e) => {
+  e.currentTarget.blur();
+  helpEl.classList.remove('hidden');
+  document.getElementById('helpClose').focus();
+});
+document.getElementById('helpClose').addEventListener('click', (e) => {
+  e.stopPropagation();
+  helpEl.classList.add('hidden');
+});
+helpEl.addEventListener('click', (e) => {
+  if (e.target === helpEl) helpEl.classList.add('hidden');
+});
+
 document.getElementById('startBtn').addEventListener('click', (e) => {
   e.currentTarget.blur();
   started = true;
@@ -517,6 +531,13 @@ canvas.addEventListener('pointerdown', (e) => {
 
 window.addEventListener('keydown', (e) => {
   const key = e.key;
+  if (!helpEl.classList.contains('hidden')) {
+    if (key === 'Escape') {
+      e.preventDefault();
+      helpEl.classList.add('hidden');
+    }
+    return;
+  }
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', 'Enter'].includes(key)) e.preventDefault();
   if (!started) {
     if (key === 'Enter' || key === ' ') {

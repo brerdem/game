@@ -17,6 +17,7 @@ import {
   gemsFor,
   cardById,
   showOffers,
+  triggerSurprise,
 } from './logic.js';
 
 const META_KEY = 'pinball-pit-meta-v1';
@@ -249,18 +250,41 @@ function render() {
     const row = visualRow(state, block);
     if (row > SAFE_ROWS + 0.2) continue;
     const rect = blockRect(block, row, L);
-    const color = PALETTE[block.color % PALETTE.length];
+    const surprise = block.kind === 'surprise';
+    const color = surprise ? '#221c38' : PALETTE[block.color % PALETTE.length];
     ctx.fillStyle = 'rgba(0,0,0,.28)';
     roundRect(rect.x, rect.y + 4, rect.w, rect.h, 8);
     ctx.fill();
     ctx.fillStyle = block.flash > 0 ? '#ffffff' : color;
     roundRect(rect.x, rect.y, rect.w, rect.h, 8);
     ctx.fill();
-    ctx.fillStyle = '#102033';
+    if (surprise) {
+      ctx.save();
+      ctx.lineWidth = 4;
+      const shift = Math.floor((state.time || 0) * 6);
+      const edges = [
+        [rect.x, rect.y, rect.x + rect.w, rect.y],
+        [rect.x + rect.w, rect.y, rect.x + rect.w, rect.y + rect.h],
+        [rect.x + rect.w, rect.y + rect.h, rect.x, rect.y + rect.h],
+        [rect.x, rect.y + rect.h, rect.x, rect.y],
+      ];
+      edges.forEach((edge, i) => {
+        ctx.strokeStyle = PALETTE[(i + shift) % PALETTE.length];
+        ctx.beginPath();
+        ctx.moveTo(edge[0], edge[1]);
+        ctx.lineTo(edge[2], edge[3]);
+        ctx.stroke();
+      });
+      ctx.restore();
+    }
+    ctx.fillStyle = surprise ? '#fff' : '#102033';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const label = Math.max(14, rect.h * 0.42);
-    if (block.kind === 'pickup') {
+    if (surprise) {
+      ctx.font = `700 ${Math.round(label)}px "Trebuchet MS", "Segoe UI", sans-serif`;
+      ctx.fillText('?', rect.x + rect.w / 2, rect.y + rect.h / 2 + 1);
+    } else if (block.kind === 'pickup') {
       ctx.font = `700 ${Math.round(label)}px "Trebuchet MS", "Segoe UI", sans-serif`;
       ctx.fillText('+', rect.x + rect.w / 2, rect.y + rect.h / 2 + 1);
     } else {
@@ -270,7 +294,10 @@ function render() {
   }
 
   if (state.phase === 'aim') {
+    const savedAim = state.aim;
+    if (state.wobble) state.aim += Math.sin((state.time || 0) * 9) * 0.18;
     const path = aimPath(state);
+    state.aim = savedAim;
     ctx.strokeStyle = 'rgba(255,255,255,.75)';
     ctx.lineWidth = 2;
     ctx.setLineDash([5, 7]);
@@ -333,9 +360,32 @@ function render() {
     ctx.globalAlpha = 1;
   }
 
+  for (const [index, item] of (state.toasts || []).entries()) {
+    const boxW = Math.min(W - 36, 340);
+    const boxH = 62;
+    const x = (W - boxW) / 2;
+    const y = 78 + index * 70;
+    ctx.globalAlpha = Math.max(0, Math.min(1, item.life / 0.4));
+    ctx.fillStyle = 'rgba(12, 14, 28, .92)';
+    roundRect(x, y, boxW, boxH, 14);
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = item.good ? '#7ae582' : '#ff5d73';
+    roundRect(x, y, boxW, boxH, 14);
+    ctx.stroke();
+    ctx.fillStyle = item.good ? '#b6f5c4' : '#ffb3c0';
+    ctx.font = '700 18px "Trebuchet MS", "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(item.title, W / 2, y + 24);
+    ctx.fillStyle = '#f4f7ff';
+    ctx.font = '600 13px "Trebuchet MS", "Segoe UI", sans-serif';
+    ctx.fillText(item.detail, W / 2, y + 44);
+    ctx.globalAlpha = 1;
+  }
+
   ctx.fillStyle = '#f4f7ff';
   ctx.beginPath();
-  const ang = state.aim;
+  const ang = state.aim + (state.wobble ? Math.sin((state.time || 0) * 9) * 0.18 : 0);
   const lx = state.originX;
   const ly = L.launchY;
   ctx.moveTo(lx + Math.cos(ang) * 16, ly + Math.sin(ang) * 16);
@@ -514,6 +564,18 @@ window.__game = {
   offer() {
     state.deck = ['split', 'explosive', 'paint', 'conductor', 'prism', 'ball', 'lightning', 'pop'];
     showOffers(state);
+  },
+  plant() {
+    const block = state.blocks.find((item) => !item.dead && item.kind === 'block');
+    if (!block) return null;
+    block.kind = 'surprise';
+    block.hp = 1;
+    block.maxHp = 1;
+    return block.id;
+  },
+  crack(id) {
+    triggerSurprise(state, id);
+    return state.toasts?.[0] || null;
   },
 };
 requestAnimationFrame(frame);

@@ -79,7 +79,7 @@ export function tagCount(state, tag) {
 }
 
 export function gemsFor(state) {
-  return state.rowsCleared + state.bosses * 4;
+  return state.rowsCleared + state.bosses * 4 + (state.bonusGems || 0);
 }
 
 export function mulberry32(seed) {
@@ -206,6 +206,14 @@ function addRow(state, row, boss) {
       dead: false,
     });
   }
+  const chance = Math.min(0.2, 0.035 + state.level * 0.011);
+  const normals = state.blocks.filter((block) => block.rowId === rowId && block.kind === 'block');
+  if (normals.length && state.rng() < chance) {
+    const surprise = normals[Math.floor(state.rng() * normals.length)];
+    surprise.kind = 'surprise';
+    surprise.hp = 1;
+    surprise.maxHp = 1;
+  }
 }
 
 export function createRun(seed = 1, options = {}) {
@@ -235,8 +243,17 @@ export function createRun(seed = 1, options = {}) {
     ballType: options.ballType || 'standard',
     deck: options.deck || null,
     bosses: 0,
+    bonusGems: 0,
     volleyClears: {},
     gemsBanked: false,
+    toasts: [],
+    time: 0,
+    freezeNext: false,
+    wobble: false,
+    nextShrink: 1,
+    nextSlow: 1,
+    volleyShrink: 1,
+    volleySlow: 1,
     particles: [],
     floats: [],
     bolts: [],
@@ -322,7 +339,7 @@ function hitDamage(state, ball, block) {
   if (ball.rainbow) amount += 2;
   if (state.ballType === 'heavy') amount += 1;
   amount += (ball.wallHits || 0) * countCard(state, 'ricochet');
-  if (block.kind === 'boss') amount += 3 * countCard(state, 'giant');
+  if (block.kind === 'boss' || block.kind === 'miniboss') amount += 3 * countCard(state, 'giant');
   return amount;
 }
 
@@ -365,7 +382,7 @@ function destroyBlock(state, block, fromExplosion) {
   block.dead = true;
   block.hp = 0;
   if (block.kind === 'boss') state.bosses += 1;
-  state.score += block.kind === 'boss' ? 400 : 50;
+  state.score += block.kind === 'boss' ? 400 : block.kind === 'miniboss' ? 120 : 50;
   const c = blockCenter(block, block.row, state.layout);
   burst(state, c.x, c.y, PALETTE[block.color], block.kind === 'boss' ? 18 : 10, block.kind === 'boss' ? 180 : 110);
   state.shake = Math.max(state.shake, block.kind === 'boss' ? 9 : 4);
@@ -394,7 +411,150 @@ function hurt(state, block, amount, x, y, fromExplosion) {
   block.flash = 0.12;
   state.score += amount * 8;
   floatText(state, x, y, String(amount), '#fff');
-  if (block.hp <= 0) destroyBlock(state, block, fromExplosion);
+  if (block.hp <= 0) {
+    if (block.kind === 'surprise') breakSurprise(state, block);
+    else destroyBlock(state, block, fromExplosion);
+  }
+}
+
+const SURPRISES = [
+  { id: 'balls', good: true, title: '+3 balls', detail: 'Three balls join this run.' },
+  { id: 'bomb', good: true, title: 'Bomb', detail: 'The blocks around it blow apart.' },
+  { id: 'rowzap', good: true, title: 'Row lightning', detail: 'Every block in that row is struck.' },
+  { id: 'card', good: true, title: 'Free card', detail: 'Pick an upgrade after this volley.' },
+  { id: 'gems', good: true, title: 'Gem shower', detail: '+5 bonus gems this run.' },
+  { id: 'freeze', good: true, title: 'Freeze', detail: 'Blocks do not advance next turn.' },
+  { id: 'rainbow', good: true, title: 'Rainbow ball', detail: 'A rainbow ball joins the volley.' },
+  { id: 'extrarow', good: false, title: 'Extra blocks', detail: 'More blocks appear up top.' },
+  { id: 'fatten', good: false, title: 'Reinforced', detail: 'The nearest row gains hit points.' },
+  { id: 'recolor', good: false, title: 'Color shift', detail: 'One of your balls changes color.' },
+  { id: 'sluggish', good: false, title: 'Sluggish', detail: 'Balls are smaller and slower next volley.' },
+  { id: 'miniboss', good: false, title: 'Mini boss', detail: 'A tough block appears at the top.' },
+  { id: 'wobble', good: false, title: 'Aim wobble', detail: 'Your next aim wavers.' },
+];
+
+function toast(state, title, detail, good) {
+  state.toasts = state.toasts || [];
+  state.toasts.unshift({ title, detail, good, life: 2.6, max: 2.6 });
+  if (state.toasts.length > 3) state.toasts.length = 3;
+}
+
+function cellTaken(state, row, col) {
+  return state.blocks.some((block) => {
+    if (block.dead || block.row !== row) return false;
+    return col >= block.col && col < block.col + block.span;
+  });
+}
+
+function placeBlock(state, row, col, span, hp, kind) {
+  state.blocks.push({
+    id: state.nextBlockId++,
+    row,
+    col,
+    span,
+    hp,
+    maxHp: hp,
+    color: pickColor(state),
+    kind,
+    rowId: state.nextRowId++,
+    dead: false,
+  });
+}
+
+function spawnGapBlocks(state, count, hp) {
+  let placed = 0;
+  for (let row = 0; row < SAFE_ROWS - 2 && placed < count; row++) {
+    const free = [];
+    for (let col = 0; col < COLS; col++) if (!cellTaken(state, row, col)) free.push(col);
+    for (const col of shuffle(state.rng, free)) {
+      if (placed >= count) break;
+      placeBlock(state, row, col, 1, hp, 'block');
+      placed += 1;
+    }
+  }
+  return placed;
+}
+
+function rollSurprise(state, block, at) {
+  const good = state.rng() < 0.6;
+  const pool = SURPRISES.filter((item) => item.good === good);
+  const effect = pool[Math.floor(state.rng() * pool.length)];
+  if (effect.id === 'balls') {
+    for (let i = 0; i < 3; i++) state.pendingBalls.push(pickColor(state));
+  } else if (effect.id === 'bomb') {
+    const splash = 4 + countCard(state, 'explosive');
+    for (const other of neighbors(state, block, 1)) hurt(state, other, splash, at.x, at.y, true);
+  } else if (effect.id === 'rowzap') {
+    const dmg = 3 + countCard(state, 'damage') + countCard(state, 'conductor');
+    for (const other of state.blocks) {
+      if (other.dead || other.row !== block.row || other.id === block.id) continue;
+      const c = blockCenter(other, other.row, state.layout);
+      state.bolts.push({ x1: at.x, y1: at.y, x2: c.x, y2: c.y, life: 0.28 });
+      hurt(state, other, dmg, c.x, c.y, true);
+    }
+  } else if (effect.id === 'card') {
+    state.rewardQueued = true;
+  } else if (effect.id === 'gems') {
+    state.bonusGems += 5;
+  } else if (effect.id === 'freeze') {
+    state.freezeNext = true;
+  } else if (effect.id === 'rainbow') {
+    spawnRainbow(state, at.x, at.y);
+  } else if (effect.id === 'extrarow') {
+    const hp = 1 + Math.floor((state.level - 1) / 3);
+    if (!spawnGapBlocks(state, 3, hp)) {
+      for (const other of state.blocks) if (!other.dead && other.kind !== 'pickup') other.hp += 1;
+    }
+  } else if (effect.id === 'fatten') {
+    let row = block.row;
+    if (!state.blocks.some((other) => !other.dead && other.row === row && other.id !== block.id)) {
+      const rows = state.blocks.filter((other) => !other.dead).map((other) => other.row);
+      row = rows.sort((a, b) => Math.abs(a - block.row) - Math.abs(b - block.row))[0] ?? row;
+    }
+    for (const other of state.blocks) {
+      if (!other.dead && other.row === row && other.id !== block.id && other.kind !== 'pickup') other.hp += 2;
+    }
+  } else if (effect.id === 'recolor') {
+    if (state.magazine.length) {
+      const index = Math.floor(state.rng() * state.magazine.length);
+      state.magazine[index] = (state.magazine[index] + 1 + Math.floor(state.rng() * 4)) % PALETTE.length;
+    }
+  } else if (effect.id === 'sluggish') {
+    state.nextShrink = 0.62;
+    state.nextSlow = 0.7;
+  } else if (effect.id === 'miniboss') {
+    let placed = false;
+    for (let row = 0; row < 3 && !placed; row++) {
+      for (let col = 0; col < COLS - 1; col++) {
+        if (!cellTaken(state, row, col) && !cellTaken(state, row, col + 1)) {
+          placeBlock(state, row, col, 2, 8, 'miniboss');
+          placed = true;
+          break;
+        }
+      }
+    }
+  } else if (effect.id === 'wobble') {
+    state.wobble = true;
+  }
+  toast(state, effect.title, effect.detail, effect.good);
+}
+
+function breakSurprise(state, block) {
+  if (block.dead) return;
+  block.dead = true;
+  block.hp = 0;
+  state.score += 40;
+  const at = blockCenter(block, block.row, state.layout);
+  PALETTE.forEach((color) => burst(state, at.x, at.y, color, 4, 120));
+  state.shake = Math.max(state.shake, 6);
+  if (state.resolvingSurprise) {
+    checkRows(state);
+    return;
+  }
+  state.resolvingSurprise = true;
+  rollSurprise(state, block, at);
+  state.resolvingSurprise = false;
+  checkRows(state);
 }
 
 function collectPickup(state, block) {
@@ -474,10 +634,10 @@ function makeBall(state, color, angle, child, x, y) {
   return {
     x: x ?? state.originX,
     y: y ?? layout.launchY,
-    vx: Math.cos(angle) * layout.speed,
-    vy: Math.sin(angle) * layout.speed,
+    vx: Math.cos(angle) * layout.speed * (state.volleySlow || 1),
+    vy: Math.sin(angle) * layout.speed * (state.volleySlow || 1),
     color,
-    r: layout.ballR,
+    r: layout.ballR * (state.volleyShrink || 1),
     child: !!child,
     splitDone: false,
     bounces: 0,
@@ -497,6 +657,14 @@ export function fire(state) {
   state.phase = 'volley';
   state.volleyTime = 0;
   state.volleyClears = {};
+  if (state.wobble) {
+    state.aim = clamp(state.aim + (state.rng() - 0.5) * 0.5, -Math.PI + 0.18, -0.18);
+    state.wobble = false;
+  }
+  state.volleyShrink = state.nextShrink || 1;
+  state.volleySlow = state.nextSlow || 1;
+  state.nextShrink = 1;
+  state.nextSlow = 1;
   state.balls = [];
   state.spawnQueue = state.magazine.map((color, i) => ({ color, t: i * 0.085 }));
   state.pendingBalls = [];
@@ -742,6 +910,11 @@ export function cycleCard(state, dir) {
 }
 
 function beginShift(state) {
+  if (state.freezeNext) {
+    state.freezeNext = false;
+    state.phase = 'aim';
+    return;
+  }
   state.phase = 'shift';
   state.shiftT = 0;
   for (const block of state.blocks) if (!block.dead) block.row += 1;
@@ -762,7 +935,10 @@ function finishShift(state) {
 }
 
 function ageFx(state, dt) {
+  state.time = (state.time || 0) + dt;
   state.shake = Math.max(0, state.shake - dt * 18);
+  for (const item of state.toasts || []) item.life -= dt;
+  state.toasts = (state.toasts || []).filter((item) => item.life > 0);
   for (const p of state.particles) {
     p.life -= dt;
     p.x += p.vx * dt;
@@ -914,6 +1090,14 @@ function rayAabb(ox, oy, dx, dy, box) {
   }
   if (tmin <= 0 || tmin > 4000) return null;
   return { t: tmin, nx, ny, x: ox + dx * tmin, y: oy + dy * tmin };
+}
+
+export function triggerSurprise(state, blockId) {
+  const block = state.blocks.find((item) => item.id === blockId);
+  if (!block || block.dead) return null;
+  block.kind = 'surprise';
+  breakSurprise(state, block);
+  return state.toasts?.[0] || null;
 }
 
 /** Test hook: apply one hit of a colored ball to a block id. */

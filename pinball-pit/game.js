@@ -1,5 +1,7 @@
 import {
   PALETTE,
+  CARDS,
+  BALL_TYPES,
   SAFE_ROWS,
   createRun,
   update,
@@ -12,7 +14,32 @@ import {
   visualRow,
   aimPath,
   applyLayout,
+  gemsFor,
+  cardById,
+  showOffers,
 } from './logic.js';
+
+const META_KEY = 'pinball-pit-meta-v1';
+
+function loadMeta() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(META_KEY) || '{}');
+    return {
+      gems: saved.gems || 0,
+      unlocked: Array.isArray(saved.unlocked) ? saved.unlocked : [],
+      ballType: saved.ballType || 'standard',
+      startCard: saved.startCard || '',
+    };
+  } catch {
+    return { gems: 0, unlocked: [], ballType: 'standard', startCard: '' };
+  }
+}
+
+function saveMeta(meta) {
+  localStorage.setItem(META_KEY, JSON.stringify(meta));
+}
+
+let meta = loadMeta();
 
 const stage = document.getElementById('stage');
 const canvas = document.getElementById('c');
@@ -20,6 +47,7 @@ const ctx = canvas.getContext('2d');
 const startEl = document.getElementById('start');
 const overEl = document.getElementById('over');
 const helpEl = document.getElementById('help');
+const unlockEl = document.getElementById('unlocks');
 const cardsEl = document.getElementById('cards');
 const finalScore = document.getElementById('finalScore');
 const cardButtons = [...cardsEl.querySelectorAll('button.card')];
@@ -39,16 +67,117 @@ function roundRect(x, y, w, h, r) {
   ctx.closePath();
 }
 
+function runOptions() {
+  const deck = CARDS.filter((card) => !card.cost || meta.unlocked.includes(card.id)).map((card) => card.id);
+  const startCard = meta.startCard && deck.includes(meta.startCard) ? meta.startCard : '';
+  const ballType = BALL_TYPES.some((ball) => ball.id === meta.ballType && (ball.cost === 0 || meta.unlocked.includes(ball.id)))
+    ? meta.ballType
+    : 'standard';
+  return { ballType, startCard, deck };
+}
+
+function refreshMetaLabels() {
+  const ball = BALL_TYPES.find((item) => item.id === meta.ballType);
+  const card = cardById(meta.startCard);
+  document.getElementById('gemLine').textContent = `Gems ${meta.gems} · ${ball?.name || 'Standard'}${card ? ` · ${card.short}` : ''}`;
+  document.getElementById('unlockGems').textContent = `Gems ${meta.gems}`;
+}
+
+function renderUnlocks() {
+  const ballList = document.getElementById('ballList');
+  const cardList = document.getElementById('cardList');
+  ballList.replaceChildren();
+  cardList.replaceChildren();
+  for (const ball of BALL_TYPES) {
+    ballList.appendChild(unlockRow(ball, meta.ballType === ball.id, 'ball'));
+  }
+  const none = document.createElement('div');
+  none.className = 'unlock-row';
+  none.innerHTML = `<p><strong>None</strong></p>`;
+  const noneBtn = document.createElement('button');
+  noneBtn.type = 'button';
+  noneBtn.className = 'mini';
+  noneBtn.textContent = meta.startCard ? 'Equip' : 'Equipped';
+  noneBtn.disabled = !meta.startCard;
+  noneBtn.addEventListener('click', () => {
+    meta.startCard = '';
+    saveMeta(meta);
+    refreshMetaLabels();
+    renderUnlocks();
+  });
+  const actions = document.createElement('div');
+  actions.className = 'actions';
+  actions.appendChild(noneBtn);
+  none.appendChild(actions);
+  cardList.appendChild(none);
+  for (const card of CARDS) {
+    cardList.appendChild(unlockRow(card, meta.startCard === card.id, 'card'));
+  }
+}
+
+function unlockRow(item, equipped, kind) {
+  const owned = !item.cost || meta.unlocked.includes(item.id);
+  const row = document.createElement('div');
+  row.className = 'unlock-row';
+  const copy = document.createElement('p');
+  copy.innerHTML = `<strong>${item.name || item.title}</strong><br>${item.text}`;
+  const actions = document.createElement('div');
+  actions.className = 'actions';
+  if (!owned) {
+    const buy = document.createElement('button');
+    buy.type = 'button';
+    buy.className = 'mini';
+    buy.textContent = `${item.cost} gems`;
+    buy.disabled = meta.gems < item.cost;
+    buy.addEventListener('click', () => {
+      if (meta.gems < item.cost) return;
+      meta.gems -= item.cost;
+      meta.unlocked.push(item.id);
+      saveMeta(meta);
+      refreshMetaLabels();
+      renderUnlocks();
+    });
+    actions.appendChild(buy);
+  } else {
+    const equip = document.createElement('button');
+    equip.type = 'button';
+    equip.className = 'mini';
+    equip.textContent = equipped ? 'Equipped' : 'Equip';
+    equip.disabled = equipped;
+    equip.addEventListener('click', () => {
+      if (kind === 'ball') meta.ballType = item.id;
+      else meta.startCard = item.id;
+      saveMeta(meta);
+      refreshMetaLabels();
+      renderUnlocks();
+    });
+    actions.appendChild(equip);
+  }
+  row.append(copy, actions);
+  return row;
+}
+
 function sync() {
   startEl.classList.toggle('hidden', started);
   overEl.classList.toggle('hidden', state.phase !== 'over');
   cardsEl.classList.toggle('hidden', state.phase !== 'cards');
-  if (state.phase === 'over') finalScore.textContent = `Score ${state.score}`;
+  if (state.phase === 'over') {
+    if (!state.gemsBanked) {
+      state.gemsBanked = true;
+      state.gemGain = gemsFor(state);
+      meta.gems += state.gemGain;
+      saveMeta(meta);
+      refreshMetaLabels();
+    }
+    finalScore.textContent = `Score ${state.score} · Gems +${state.gemGain || 0}`;
+  }
   if (state.phase === 'cards' && state.cardChoices) {
     state.cardChoices.forEach((card, i) => {
       const btn = cardButtons[i];
+      btn.dataset.rarity = card.rarity;
       btn.querySelector('strong').textContent = card.title;
-      btn.querySelector('span').textContent = card.text;
+      const tags = card.tags.join(' · ');
+      btn.querySelector('span').textContent = `${card.rarity.toUpperCase()} · ${tags} — ${card.text}`;
       btn.classList.toggle('selected', i === state.cardIndex);
     });
   }
@@ -81,15 +210,28 @@ function render() {
   ctx.textAlign = 'right';
   ctx.fillText(`${state.magazine.length} balls`, W - 16, 24);
 
-  const tags = [];
-  if (state.upgrades.damage) tags.push(`+${state.upgrades.damage} dmg`);
-  if (state.upgrades.split) tags.push(`split ${state.upgrades.split}`);
-  if (state.upgrades.lightning) tags.push('zap');
-  if (state.upgrades.pop) tags.push('burst');
-  ctx.textAlign = 'left';
+  const held = new Map();
+  for (const id of state.held || []) {
+    const card = cardById(id);
+    if (!card) continue;
+    const entry = held.get(id) || { name: card.short, n: 0, rarity: card.rarity };
+    entry.n += 1;
+    held.set(id, entry);
+  }
+  let chipX = 16;
   ctx.font = '700 12px "Trebuchet MS", "Segoe UI", sans-serif';
-  ctx.fillStyle = '#ffb703';
-  ctx.fillText(tags.join('   '), 16, 52);
+  ctx.textAlign = 'left';
+  for (const entry of held.values()) {
+    const label = entry.n > 1 ? `${entry.name} x${entry.n}` : entry.name;
+    const width = ctx.measureText(label).width + 14;
+    if (chipX + width > W - 12) break;
+    ctx.fillStyle = entry.rarity === 'rare' ? '#3a2458' : entry.rarity === 'uncommon' ? '#1d4a32' : '#243056';
+    roundRect(chipX, 42, width, 20, 8);
+    ctx.fill();
+    ctx.fillStyle = entry.rarity === 'rare' ? '#e2c6ff' : entry.rarity === 'uncommon' ? '#b6f5c4' : '#d5def5';
+    ctx.fillText(label, chipX + 7, 52);
+    chipX += width + 6;
+  }
 
   const board = L.board;
   ctx.fillStyle = '#0c1024';
@@ -155,10 +297,19 @@ function render() {
     ball.trail.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
     ctx.stroke();
     ctx.globalAlpha = 1;
-    ctx.fillStyle = PALETTE[ball.color];
+    ctx.fillStyle = ball.rainbow ? '#fff' : PALETTE[ball.color];
     ctx.beginPath();
     ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
     ctx.fill();
+    if (ball.rainbow) {
+      ctx.lineWidth = 2;
+      PALETTE.forEach((color, i) => {
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.r + 3, (i / PALETTE.length) * Math.PI * 2, ((i + 1) / PALETTE.length) * Math.PI * 2);
+        ctx.stroke();
+      });
+    }
     ctx.fillStyle = 'rgba(255,255,255,.7)';
     ctx.beginPath();
     ctx.arc(ball.x - 2, ball.y - 2, 2, 0, Math.PI * 2);
@@ -229,7 +380,9 @@ function resize() {
 
 function begin() {
   started = true;
-  state = createRun((Date.now() ^ 0x9e3779b1) >>> 0);
+  helpEl.classList.add('hidden');
+  unlockEl.classList.add('hidden');
+  state = createRun((Date.now() ^ 0x9e3779b1) >>> 0, runOptions());
   const rect = stage.getBoundingClientRect();
   applyLayout(state, Math.max(1, rect.width), Math.max(1, rect.height));
   startEl.classList.add('hidden');
@@ -247,6 +400,18 @@ document.getElementById('helpClose').addEventListener('click', (e) => {
 });
 helpEl.addEventListener('click', (e) => {
   if (e.target === helpEl) helpEl.classList.add('hidden');
+});
+document.getElementById('unlockBtn').addEventListener('click', (e) => {
+  e.currentTarget.blur();
+  renderUnlocks();
+  unlockEl.classList.remove('hidden');
+});
+document.getElementById('unlockClose').addEventListener('click', (e) => {
+  e.stopPropagation();
+  unlockEl.classList.add('hidden');
+});
+unlockEl.addEventListener('click', (e) => {
+  if (e.target === unlockEl) unlockEl.classList.add('hidden');
 });
 
 document.getElementById('startBtn').addEventListener('click', (e) => {
@@ -283,10 +448,11 @@ window.addEventListener('pointerup', () => {
 });
 
 window.addEventListener('keydown', (e) => {
-  if (!helpEl.classList.contains('hidden')) {
+  if (!helpEl.classList.contains('hidden') || !unlockEl.classList.contains('hidden')) {
     if (e.key === 'Escape') {
       e.preventDefault();
       helpEl.classList.add('hidden');
+      unlockEl.classList.add('hidden');
     }
     return;
   }
@@ -324,6 +490,7 @@ function frame(now) {
 
 window.addEventListener('resize', resize);
 resize();
+refreshMetaLabels();
 window.__game = {
   get: () => ({
     score: state.score,
@@ -340,6 +507,13 @@ window.__game = {
   },
   shoot() {
     fire(state);
+  },
+  hold(ids) {
+    state.held = ids.slice();
+  },
+  offer() {
+    state.deck = ['split', 'explosive', 'paint', 'conductor', 'prism', 'ball', 'lightning', 'pop'];
+    showOffers(state);
   },
 };
 requestAnimationFrame(frame);

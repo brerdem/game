@@ -8,7 +8,7 @@ export const SAFE_ROWS = 8;
 
 /** Board geometry for a viewport. Cells stay square; the pit grows to fill the view. */
 export function fitLayout(w = VIEW_W, h = VIEW_H) {
-  const hud = Math.max(54, Math.min(88, h * 0.08));
+  const hud = Math.max(78, Math.min(120, h * 0.12));
   const footer = Math.max(46, Math.min(92, h * 0.1));
   const marginX = Math.max(12, Math.min(40, w * 0.04));
   const availW = Math.max(80, w - marginX * 2);
@@ -39,12 +39,48 @@ export const BALL_R = DEFAULT_LAYOUT.ballR;
 export const SPEED = DEFAULT_LAYOUT.speed;
 
 export const CARDS = [
-  { id: 'split', title: 'Split Shot', text: 'A ball splits the first time it hits a block.' },
-  { id: 'lightning', title: 'Chain Zap', text: 'Every 5th bounce zaps the nearest block.' },
-  { id: 'pop', title: 'Color Burst', text: 'Same-colored neighbors pop together.' },
-  { id: 'damage', title: 'Heavy Balls', text: 'Every hit deals +1 damage.' },
-  { id: 'ball', title: 'Extra Ball', text: 'Add one ball to your volley.' },
+  { id: 'split', title: 'Split Shot', short: 'Split', rarity: 'common', tags: ['ball'], text: 'A ball splits the first time it hits a block.' },
+  { id: 'lightning', title: 'Chain Zap', short: 'Zap', rarity: 'common', tags: ['zap'], text: 'Every 5th bounce zaps the nearest block.' },
+  { id: 'pop', title: 'Color Burst', short: 'Burst', rarity: 'common', tags: ['color'], unique: true, text: 'Same-colored neighbors pop together.' },
+  { id: 'damage', title: 'Heavy Balls', short: 'Heavy', rarity: 'common', tags: ['power'], text: 'Every hit deals +1 damage.' },
+  { id: 'ball', title: 'Extra Ball', short: 'Ball', rarity: 'common', tags: ['ball'], text: 'Add one ball to your volley.' },
+  { id: 'explosive', title: 'Blast Core', short: 'Blast', rarity: 'common', tags: ['blast'], text: 'Destroyed blocks splash 1 damage to neighbors.' },
+  { id: 'ricochet', title: 'Wall Echo', short: 'Echo', rarity: 'common', tags: ['bounce'], text: '+1 damage for each wall this ball has bounced off.' },
+  { id: 'swap', title: 'Color Swap', short: 'Swap', rarity: 'common', tags: ['color'], unique: true, text: 'After a hit, the ball becomes that block\'s color.' },
+  { id: 'paint', title: 'Paint Burst', short: 'Paint', rarity: 'uncommon', tags: ['blast', 'color'], cost: 30, unique: true, text: 'Explosions repaint neighbors to the destroyed color.' },
+  { id: 'pierce', title: 'Piercing', short: 'Pierce', rarity: 'uncommon', tags: ['ball'], cost: 35, unique: true, text: 'Balls pass through blocks instead of bouncing off.' },
+  { id: 'rowscale', title: 'Row Heat', short: 'Heat', rarity: 'uncommon', tags: ['power'], cost: 30, unique: true, text: '+1 damage for every 3 rows cleared this run.' },
+  { id: 'spare', title: 'Spare Rack', short: 'Spare', rarity: 'uncommon', tags: ['ball'], cost: 25, text: 'Add one ball, and Ball cards add a second.' },
+  { id: 'conductor', title: 'Conductor', short: 'Conduct', rarity: 'rare', tags: ['zap', 'synergy'], cost: 50, unique: true, text: 'Zap triggers one bounce sooner and deals +1. Stronger with Chain Zap.' },
+  { id: 'blastcap', title: 'Blast Cap', short: 'Cap', rarity: 'rare', tags: ['blast', 'synergy'], cost: 55, unique: true, text: 'If you hold a Blast card, splashes reach farther and deal +1.' },
+  { id: 'prism', title: 'Prism', short: 'Prism', rarity: 'rare', tags: ['color', 'synergy'], cost: 50, unique: true, text: 'Same-color hits deal +1 more. Another Color card makes that +2.' },
+  { id: 'prismseed', title: 'Prism Seed', short: 'Seed', rarity: 'rare', tags: ['color'], cost: 60, unique: true, text: 'A rainbow ball appears after 2 same-color clears, not 3.' },
+  { id: 'giant', title: 'Giant Slayer', short: 'Slayer', rarity: 'uncommon', tags: ['power'], cost: 40, unique: true, text: 'Bosses take +3 damage.' },
+  { id: 'echo', title: 'Split Echo', short: 'Duo', rarity: 'rare', tags: ['ball', 'synergy'], cost: 55, unique: true, text: 'Split balls split once more if you also hold Split Shot.' },
 ];
+
+export const BALL_TYPES = [
+  { id: 'standard', name: 'Standard', cost: 0, text: 'Plain colored balls.' },
+  { id: 'heavy', name: 'Heavy', cost: 25, text: 'Every hit deals +1 damage.' },
+  { id: 'pierce', name: 'Piercing', cost: 40, text: 'Balls pass through blocks.' },
+  { id: 'split', name: 'Splitting', cost: 45, text: 'Balls split the first time they hit.' },
+];
+
+export function cardById(id) {
+  return CARDS.find((card) => card.id === id);
+}
+
+export function countCard(state, id) {
+  return state.held.reduce((n, held) => n + (held === id ? 1 : 0), 0);
+}
+
+export function tagCount(state, tag) {
+  return state.held.reduce((n, id) => n + (cardById(id)?.tags.includes(tag) ? 1 : 0), 0);
+}
+
+export function gemsFor(state) {
+  return state.rowsCleared + state.bosses * 4;
+}
 
 export function mulberry32(seed) {
   let a = seed >>> 0;
@@ -133,7 +169,7 @@ function addRow(state, row, boss) {
   const rowId = state.nextRowId++;
   state.liveRowIds.push(rowId);
   if (boss) {
-    const hp = 16 + state.level * 2;
+    const hp = state.level <= 10 ? 12 : 8 + state.level * 2;
     state.blocks.push({
       id: state.nextBlockId++,
       row,
@@ -172,7 +208,7 @@ function addRow(state, row, boss) {
   }
 }
 
-export function createRun(seed = 1) {
+export function createRun(seed = 1, options = {}) {
   const state = {
     rng: mulberry32(seed),
     phase: 'aim',
@@ -195,7 +231,12 @@ export function createRun(seed = 1) {
     rewardQueued: false,
     cardChoices: null,
     cardIndex: 0,
-    upgrades: { split: 0, lightning: 0, pop: 0, damage: 0, ball: 0 },
+    held: options.startCard ? [options.startCard] : [],
+    ballType: options.ballType || 'standard',
+    deck: options.deck || null,
+    bosses: 0,
+    volleyClears: {},
+    gemsBanked: false,
     particles: [],
     floats: [],
     bolts: [],
@@ -268,30 +309,92 @@ function checkRows(state) {
   }
 }
 
-function destroyBlock(state, block) {
+function hitDamage(state, ball, block) {
+  const bonus = countCard(state, 'damage') + countCard(state, 'rowscale') * Math.floor(state.rowsCleared / 3);
+  const synergyPower = tagCount(state, 'synergy') && tagCount(state, 'power') ? 1 : 0;
+  const matched = ball.rainbow || ball.color === block.color;
+  let colorMult = 1;
+  if (matched) {
+    colorMult = 2 + countCard(state, 'prism');
+    if (tagCount(state, 'color') >= 2) colorMult += 1;
+  }
+  let amount = (1 + bonus + synergyPower) * colorMult;
+  if (ball.rainbow) amount += 2;
+  if (state.ballType === 'heavy') amount += 1;
+  amount += (ball.wallHits || 0) * countCard(state, 'ricochet');
+  if (block.kind === 'boss') amount += 3 * countCard(state, 'giant');
+  return amount;
+}
+
+function neighbors(state, block, range) {
+  const found = [];
+  for (const other of state.blocks) {
+    if (other === block || other.dead || other.kind === 'pickup') continue;
+    let near = false;
+    for (const ca of occupies(block)) {
+      for (const cb of occupies(other)) {
+        if (Math.abs(ca.r - cb.r) + Math.abs(ca.c - cb.c) <= range) near = true;
+      }
+    }
+    if (near) found.push(other);
+  }
+  return found;
+}
+
+function spawnRainbow(state, x, y) {
+  if (state.balls.length >= 28) return;
+  const ang = -Math.PI / 2 + (state.rng() - 0.5) * 1.1;
+  const ball = makeBall(state, 0, ang, true, x, y);
+  ball.rainbow = true;
+  ball.child = true;
+  state.balls.push(ball);
+  floatText(state, x, y - 18, 'RAINBOW', '#ffe66d');
+  PALETTE.forEach((color, i) => burst(state, x, y, color, 3, 90 + i * 8));
+  state.shake = Math.max(state.shake, 7);
+}
+
+function noteColorClear(state, color, x, y) {
+  state.volleyClears[color] = (state.volleyClears[color] || 0) + 1;
+  const need = countCard(state, 'prismseed') ? 2 : 3;
+  const n = state.volleyClears[color];
+  if (n >= need && n % need === 0) spawnRainbow(state, x, y);
+}
+
+function destroyBlock(state, block, fromExplosion) {
   if (block.dead || block.kind === 'pickup') return;
   block.dead = true;
   block.hp = 0;
+  if (block.kind === 'boss') state.bosses += 1;
   state.score += block.kind === 'boss' ? 400 : 50;
   const c = blockCenter(block, block.row, state.layout);
   burst(state, c.x, c.y, PALETTE[block.color], block.kind === 'boss' ? 18 : 10, block.kind === 'boss' ? 180 : 110);
   state.shake = Math.max(state.shake, block.kind === 'boss' ? 9 : 4);
-  if (state.upgrades.pop) {
+  noteColorClear(state, block.color, c.x, c.y);
+  if (countCard(state, 'pop')) {
     for (const other of state.blocks) {
-      if (other.dead || other.kind !== 'block' && other.kind !== 'boss') continue;
-      if (other.color === block.color && adjacent(block, other)) destroyBlock(state, other);
+      if (other.dead || (other.kind !== 'block' && other.kind !== 'boss')) continue;
+      if (other.color === block.color && adjacent(block, other)) destroyBlock(state, other, fromExplosion);
+    }
+  }
+  const splash = countCard(state, 'explosive') + (countCard(state, 'blastcap') && tagCount(state, 'blast') ? 1 : 0);
+  if (!fromExplosion && splash > 0) {
+    const range = countCard(state, 'blastcap') && countCard(state, 'explosive') ? 2 : 1;
+    const paint = countCard(state, 'paint') > 0;
+    for (const other of neighbors(state, block, range)) {
+      if (paint) other.color = block.color;
+      hurt(state, other, splash, c.x, c.y, true);
     }
   }
   checkRows(state);
 }
 
-function hurt(state, block, amount, x, y) {
+function hurt(state, block, amount, x, y, fromExplosion) {
   if (block.dead || block.kind === 'pickup') return;
   block.hp -= amount;
   block.flash = 0.12;
   state.score += amount * 8;
   floatText(state, x, y, String(amount), '#fff');
-  if (block.hp <= 0) destroyBlock(state, block);
+  if (block.hp <= 0) destroyBlock(state, block, fromExplosion);
 }
 
 function collectPickup(state, block) {
@@ -321,7 +424,15 @@ function zap(state, ball) {
   if (!best) return;
   const c = blockCenter(best, best.row, state.layout);
   state.bolts.push({ x1: ball.x, y1: ball.y, x2: c.x, y2: c.y, life: 0.16 });
-  hurt(state, best, 1 + state.upgrades.damage, c.x, c.y - 10);
+  hurt(state, best, 1 + countCard(state, 'damage') + countCard(state, 'conductor'), c.x, c.y - 10);
+}
+
+function splitCount(state, ball) {
+  let n = countCard(state, 'split') + (state.ballType === 'split' ? 1 : 0);
+  if (countCard(state, 'echo') && countCard(state, 'split')) n += 1;
+  if (ball.child && !(countCard(state, 'echo') && countCard(state, 'split'))) return 0;
+  if (ball.child) return 1;
+  return n;
 }
 
 function onHit(state, ball, block) {
@@ -330,21 +441,32 @@ function onHit(state, ball, block) {
     collectPickup(state, block);
     return;
   }
-  const same = ball.color === block.color;
-  const amount = (1 + state.upgrades.damage) * (same ? 2 : 1);
+  const same = !ball.rainbow && ball.color === block.color;
+  const amount = hitDamage(state, ball, block);
   const c = blockCenter(block, block.row, state.layout);
   hurt(state, block, amount, c.x, c.y - 12);
-  if (same) burst(state, ball.x, ball.y, '#fff', 4, 70);
-  if (state.upgrades.split > 0 && !ball.child && !ball.splitDone && state.balls.length < 30) {
+  if (same) {
+    burst(state, ball.x, ball.y, PALETTE[ball.color], 6, 80);
+    floatText(state, c.x, c.y - 28, 'x2', PALETTE[ball.color]);
+  }
+  if (ball.rainbow) burst(state, ball.x, ball.y, '#fff', 8, 100);
+  const splits = splitCount(state, ball);
+  if (splits > 0 && !ball.splitDone && state.balls.length < 30) {
     ball.splitDone = true;
     const base = Math.atan2(ball.vy, ball.vx);
-    for (let i = 0; i < state.upgrades.split; i++) {
+    for (let i = 0; i < splits; i++) {
       const sign = i % 2 === 0 ? 1 : -1;
       const ang = base + sign * (0.48 + Math.floor(i / 2) * 0.18);
-      state.balls.push(makeBall(state, ball.color, ang, true, ball.x, ball.y));
+      const child = makeBall(state, ball.color, ang, true, ball.x, ball.y);
+      child.rainbow = !!ball.rainbow;
+      state.balls.push(child);
     }
   }
-  if (state.upgrades.lightning > 0 && ball.bounces > 0 && ball.bounces % 5 === 0) zap(state, ball);
+  if (countCard(state, 'swap') && !ball.rainbow) ball.color = block.color;
+  const zapEvery = Math.max(3, 5 - countCard(state, 'conductor'));
+  if ((countCard(state, 'lightning') || countCard(state, 'conductor')) && ball.bounces > 0 && ball.bounces % zapEvery === 0) {
+    zap(state, ball);
+  }
 }
 
 function makeBall(state, color, angle, child, x, y) {
@@ -364,6 +486,8 @@ function makeBall(state, color, angle, child, x, y) {
     flat: 0,
     alive: true,
     entered: false,
+    rainbow: false,
+    wallHits: 0,
     trail: [],
   };
 }
@@ -372,6 +496,7 @@ export function fire(state) {
   if (state.phase !== 'aim' || state.magazine.length === 0) return false;
   state.phase = 'volley';
   state.volleyTime = 0;
+  state.volleyClears = {};
   state.balls = [];
   state.spawnQueue = state.magazine.map((color, i) => ({ color, t: i * 0.085 }));
   state.pendingBalls = [];
@@ -394,7 +519,9 @@ function resolveWalls(state, ball) {
     if (!ball.wall.left) {
       ball.wall.left = true;
       bounce(ball);
-      if (state.upgrades.lightning > 0 && ball.bounces % 5 === 0) zap(state, ball);
+      ball.wallHits = (ball.wallHits || 0) + 1;
+      const zapEvery = Math.max(3, 5 - countCard(state, 'conductor'));
+      if ((countCard(state, 'lightning') || countCard(state, 'conductor')) && ball.bounces % zapEvery === 0) zap(state, ball);
     }
   } else ball.wall.left = false;
   if (ball.x > right) {
@@ -403,7 +530,9 @@ function resolveWalls(state, ball) {
     if (!ball.wall.right) {
       ball.wall.right = true;
       bounce(ball);
-      if (state.upgrades.lightning > 0 && ball.bounces % 5 === 0) zap(state, ball);
+      ball.wallHits = (ball.wallHits || 0) + 1;
+      const zapEvery = Math.max(3, 5 - countCard(state, 'conductor'));
+      if ((countCard(state, 'lightning') || countCard(state, 'conductor')) && ball.bounces % zapEvery === 0) zap(state, ball);
     }
   } else ball.wall.right = false;
   if (ball.y < top) {
@@ -412,7 +541,9 @@ function resolveWalls(state, ball) {
     if (!ball.wall.top) {
       ball.wall.top = true;
       bounce(ball);
-      if (state.upgrades.lightning > 0 && ball.bounces % 5 === 0) zap(state, ball);
+      ball.wallHits = (ball.wallHits || 0) + 1;
+      const zapEvery = Math.max(3, 5 - countCard(state, 'conductor'));
+      if ((countCard(state, 'lightning') || countCard(state, 'conductor')) && ball.bounces % zapEvery === 0) zap(state, ball);
     }
   } else ball.wall.top = false;
 }
@@ -487,7 +618,8 @@ function resolveBlocks(state, ball) {
       ball.touch.add(block.id);
       continue;
     }
-    separate(ball, rect, first, state.layout.speed);
+    const piercing = countCard(state, 'pierce') > 0 || state.ballType === 'pierce';
+    if (!piercing) separate(ball, rect, first, state.layout.speed);
     if (first) {
       ball.touch.add(block.id);
       onHit(state, ball, block);
@@ -545,11 +677,47 @@ function endVolley(state) {
   beginShift(state);
 }
 
+function deckOf(state) {
+  if (state.deck?.length) return state.deck.map(cardById).filter(Boolean);
+  return CARDS.filter((card) => !card.cost);
+}
+
+function offerWeight(state, card) {
+  let weight = card.rarity === 'rare' ? 1.3 : card.rarity === 'uncommon' ? 2.4 : 4.2;
+  const heldTags = new Set(state.held.flatMap((id) => cardById(id)?.tags || []));
+  if (card.tags.some((tag) => tag !== 'synergy' && heldTags.has(tag))) weight += 3.4;
+  if (card.tags.includes('synergy') && card.tags.some((tag) => tag !== 'synergy' && heldTags.has(tag))) weight += 2.2;
+  return weight;
+}
+
+function drawOffers(state) {
+  let pool = deckOf(state).filter((card) => !(card.unique && state.held.includes(card.id)));
+  if (pool.length < 3) pool = deckOf(state).filter((card) => !card.unique || !state.held.includes(card.id));
+  const picked = [];
+  const bag = pool.slice();
+  while (picked.length < 3 && bag.length) {
+    const total = bag.reduce((sum, card) => sum + offerWeight(state, card), 0);
+    let roll = state.rng() * total;
+    let index = bag.length - 1;
+    for (let i = 0; i < bag.length; i++) {
+      roll -= offerWeight(state, bag[i]);
+      if (roll <= 0) {
+        index = i;
+        break;
+      }
+    }
+    picked.push(bag.splice(index, 1)[0]);
+  }
+  while (picked.length < 3) picked.push(cardById('ball'));
+  return picked.map((card) => ({ ...card }));
+}
+
+export function showOffers(state) {
+  openCards(state);
+}
+
 function openCards(state) {
-  const pool = CARDS.filter((card) => card.id !== 'pop' || state.upgrades.pop === 0);
-  const bag = shuffle(state.rng, pool);
-  while (bag.length < 3) bag.push(CARDS.find((card) => card.id === 'ball'));
-  state.cardChoices = bag.slice(0, 3).map((card) => ({ ...card }));
+  state.cardChoices = drawOffers(state);
   state.cardIndex = 0;
   state.phase = 'cards';
 }
@@ -557,14 +725,10 @@ function openCards(state) {
 export function chooseCard(state, index) {
   if (state.phase !== 'cards' || !state.cardChoices) return false;
   const card = state.cardChoices[Math.max(0, Math.min(state.cardChoices.length - 1, index))];
-  const up = state.upgrades;
-  if (card.id === 'split') up.split += 1;
-  else if (card.id === 'lightning') up.lightning += 1;
-  else if (card.id === 'pop') up.pop = 1;
-  else if (card.id === 'damage') up.damage += 1;
-  else if (card.id === 'ball') {
-    up.ball += 1;
+  state.held.push(card.id);
+  if (card.id === 'ball' || card.id === 'spare') {
     state.magazine.push(pickColor(state));
+    if (countCard(state, 'ball') && countCard(state, 'spare')) state.magazine.push(pickColor(state));
   }
   state.cardChoices = null;
   beginShift(state);

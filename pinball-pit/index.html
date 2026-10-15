@@ -72,8 +72,33 @@
     cursor: pointer;
   }
   button.card strong { display: block; font-size: 18px; margin-bottom: 4px; }
-  button.card span { display: block; font-size: 14px; color: #c5d0ea; font-weight: 500; }
+  button.card span { display: block; font-size: 14px; color: #c5d0ea; font-weight: 500; line-height: 1.35; }
   button.card.selected { border-color: #ffb703; box-shadow: 0 0 0 3px rgba(255,183,3,.25); }
+  button.card[data-rarity="uncommon"] { border-color: #7ae582; }
+  button.card[data-rarity="rare"] { border-color: #c77dff; }
+  button.mini {
+    font: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    border: 0;
+    border-radius: 999px;
+    padding: 6px 12px;
+    cursor: pointer;
+    color: #081018;
+    background: #7ae582;
+  }
+  button.mini:disabled { opacity: 0.45; cursor: default; }
+  .unlock-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+  }
+  .unlock-row p { margin: 0; font-size: 14px; font-weight: 500; }
+  .unlock-row .actions { display: flex; gap: 6px; }
+  .help h3 { margin: 14px 0 4px; color: #ffb703; font-size: 16px; letter-spacing: .08em; }
   button.secondary {
     font: inherit;
     font-size: 18px;
@@ -116,6 +141,8 @@
     text-align: left;
   }
   .sheet .play { width: 100%; margin-top: 6px; }
+  #unlocks .sheet { display: flex; flex-direction: column; overflow: hidden; }
+  #unlocks .sheet-scroll { overflow: auto; min-height: 0; }
 </style>
 </head>
 <body>
@@ -125,18 +152,34 @@
       <h1>PINBALL PIT</h1>
       <button type="button" class="play" id="startBtn">Start</button>
       <button type="button" class="secondary" id="helpBtn">How to play</button>
+      <button type="button" class="secondary" id="unlockBtn">Unlocks</button>
+      <p id="gemLine">Gems 0</p>
     </div>
     <div id="help" class="overlay help hidden">
       <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
         <h2 id="helpTitle">How to play</h2>
         <p><strong>Goal.</strong> Break the numbered blocks before one reaches the red line.</p>
         <p><strong>A turn.</strong> Aim and launch your colored balls. They bounce off the walls and the blocks. A block's number is its hit points. When the volley ends, every block drops one row and a new row appears at the top.</p>
-        <p><strong>Color.</strong> A ball deals double damage to a block of the same color. A + pickup adds a ball of that color.</p>
-        <p><strong>Upgrades.</strong> Every 3 rows you fully clear, pick 1 of 3 cards: Split Shot, Chain Zap (every 5th bounce), Color Burst (matching neighbors pop together), Heavy Balls (+1 damage), or Extra Ball. A wide boss block appears every 10 levels.</p>
+        <p><strong>Color.</strong> A ball deals double damage to a block of the same color. Clear 3 blocks of one color in a single volley and a rainbow ball appears. It hurts every color and hits harder. A + pickup adds a ball of that color.</p>
+        <p><strong>Cards.</strong> Every 3 rows you fully clear, pick 1 of 3 cards. Offers lean toward tags you already hold, so runs combo like a deck. Cards cover blasts, paint, pierce, wall-bounce damage, color swap, extra balls, and cards that boost other cards. Rarity and tags are on each offer. Held cards sit in a strip under the score. A wide boss appears every 10 levels. The first one is meant to fall.</p>
+        <p><strong>Unlocks.</strong> Rows and bosses pay gems, saved on this device. Spend them on new ball types (heavy, piercing, splitting) and new cards. Pick a ball and a starting card before the next run.</p>
         <p><strong>Lose.</strong> A block reaches the bottom line. Pickups do not.</p>
-        <p><strong>Score.</strong> You score for damage dealt and for blocks you destroy. Bosses are worth more.</p>
+        <p><strong>Score.</strong> You score for damage dealt and for blocks you destroy. Bosses are worth more. Gems come from rows cleared and bosses broken.</p>
         <p><strong>Controls.</strong> Move the mouse to aim, then click or release to fire. Left and right rotate the aim, Up aims straight up, Space or Enter fires. On the cards, click one, or use the arrow keys and Enter.</p>
         <button type="button" class="play" id="helpClose">Close</button>
+      </div>
+    </div>
+    <div id="unlocks" class="overlay help hidden">
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="unlockTitle">
+        <h2 id="unlockTitle">Unlocks</h2>
+        <p id="unlockGems">Gems 0</p>
+        <div class="sheet-scroll">
+          <h3>BALL</h3>
+          <div id="ballList"></div>
+          <h3>STARTING CARD</h3>
+          <div id="cardList"></div>
+        </div>
+        <button type="button" class="play" id="unlockClose">Close</button>
       </div>
     </div>
     <div id="cards" class="overlay hidden">

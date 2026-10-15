@@ -1,4 +1,4 @@
-import { CAR_COLORS, DIRS, canExit, generateLevel, stepsToExit } from './logic.js';
+import { CAR_COLORS, DIRS, canExit, cellsOf, generateLevel, onCarExit, stepsToExit } from './logic.js';
 
 let W = 800;
 let H = 900;
@@ -15,6 +15,10 @@ let phase = 'idle';
 let levelNum = 1;
 let score = 0;
 let hearts = 3;
+let maxHearts = 3;
+let movesLeft = null;
+let movesUsed = 0;
+let stars = 0;
 let level = null;
 let cars = [];
 let selected = 0;
@@ -31,6 +35,11 @@ function loadLevel(n) {
   selected = cars[0]?.id ?? 0;
   motion = null;
   phase = 'idle';
+  maxHearts = level.hearts || 3;
+  hearts = maxHearts;
+  movesLeft = level.moveLimit;
+  movesUsed = 0;
+  stars = 0;
 }
 
 function startRun() {
@@ -110,7 +119,9 @@ function activate(id) {
   const car = carById(id);
   if (!car) return;
   selected = id;
-  const ok = canExit(level.size, cars, level.exits, car);
+  const ok = canExit(level, cars, car);
+  movesUsed += 1;
+  if (movesLeft != null) movesLeft -= 1;
   motion = {
     id,
     kind: ok ? 'exit' : 'bump',
@@ -133,10 +144,11 @@ function finishMove() {
     hearts -= 1;
     shake = 7;
     flash = 0.25;
-    if (hearts <= 0) return gameOver();
+    if (hearts <= 0 || (movesLeft != null && movesLeft <= 0)) return gameOver();
     phase = 'idle';
     return;
   }
+  onCarExit(level, cars, car);
   const g = geom || metrics();
   const { dr, dc } = DIRS[car.dir];
   const px = g.x + car.c * g.cell + g.cell / 2 + dc * g.cell * 0.2;
@@ -155,11 +167,14 @@ function finishMove() {
   cars = cars.filter((item) => item.id !== car.id);
   score += 100;
   if (!cars.length) {
-    score += 350 + hearts * 60;
+    const par = level.par || movesUsed;
+    stars = movesUsed <= par ? 3 : movesUsed <= par + 1 ? 2 : 1;
+    score += 350 + hearts * 60 + stars * 50;
     phase = 'clear';
-    clearT = 0.85;
+    clearT = 1.1;
     return;
   }
+  if (movesLeft != null && movesLeft <= 0) return gameOver();
   if (!carById(selected)) selected = cars[0].id;
   phase = 'idle';
 }
@@ -233,7 +248,12 @@ function render() {
   ctx.fillText(`Lv ${levelNum}`, W / 2, hudY);
   ctx.textAlign = 'right';
   ctx.fillText(String(score), W - 20, hudY);
-  for (let i = 0; i < 3; i++) drawHeart(28 + i * 32, hudY, i < hearts);
+  for (let i = 0; i < maxHearts; i++) drawHeart(28 + i * 32, hudY, i < hearts);
+  if (movesLeft != null) {
+    ctx.textAlign = 'right';
+    ctx.font = `700 ${Math.round(Math.max(14, Math.min(18, W * 0.02)))}px "Trebuchet MS", "Segoe UI", sans-serif`;
+    ctx.fillText(`${movesLeft} moves`, W - 20, hudY + 24);
+  }
 
   ctx.fillStyle = '#f7fbff';
   roundRect(g.x - 6, g.y - 6, g.board + 12, g.board + 12, 14);
@@ -251,11 +271,33 @@ function render() {
     ctx.stroke();
   }
 
+  for (const rock of level.rocks || []) {
+    const pad = g.cell * 0.22;
+    ctx.fillStyle = '#5d6c7b';
+    roundRect(g.x + rock.c * g.cell + pad, g.y + rock.r * g.cell + pad, g.cell - pad * 2, g.cell - pad * 2, 6);
+    ctx.fill();
+  }
+
   const exitSize = Math.max(10, g.cell * 0.46);
-  const drawExit = (color, x, y) => {
-    ctx.fillStyle = CAR_COLORS[color % CAR_COLORS.length];
+  const drawExit = (gate, x, y) => {
+    const color = typeof gate === 'number' ? gate : gate.color;
+    const uses = typeof gate === 'number' ? Infinity : gate.uses;
+    ctx.fillStyle = uses <= 0 ? '#9aa8b5' : CAR_COLORS[color % CAR_COLORS.length];
     roundRect(x, y, exitSize, exitSize, 5);
     ctx.fill();
+    if (gate?.cycle?.length) {
+      const next = gate.cycle[(gate.index + 1) % gate.cycle.length];
+      ctx.fillStyle = CAR_COLORS[next % CAR_COLORS.length];
+      roundRect(x + exitSize - 9, y + exitSize - 9, 8, 8, 2);
+      ctx.fill();
+    }
+    if (uses === 1) {
+      ctx.fillStyle = '#fff';
+      ctx.font = `700 ${Math.max(10, exitSize * 0.45)}px "Trebuchet MS", "Segoe UI", sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('1', x + exitSize * 0.38, y + exitSize * 0.42);
+    }
   };
   for (let i = 0; i < g.size; i++) {
     const inset = (g.cell - exitSize) / 2;
@@ -268,23 +310,54 @@ function render() {
   for (const car of cars) {
     const off = carOffset(car);
     const pad = g.cell * 0.1;
-    const x = g.x + car.c * g.cell + pad + off.x;
-    const y = g.y + car.r * g.cell + pad + off.y;
-    const s = g.cell - pad * 2;
+    const cells = cellsOf(car);
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const [r, c] of cells) {
+      const x = g.x + c * g.cell + off.x;
+      const y = g.y + r * g.cell + off.y;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x + g.cell);
+      maxY = Math.max(maxY, y + g.cell);
+    }
+    const x = minX + pad;
+    const y = minY + pad;
+    const w = maxX - minX - pad * 2;
+    const h = maxY - minY - pad * 2;
     ctx.fillStyle = 'rgba(16, 32, 48, .16)';
-    roundRect(x, y + 4, s, s, 10);
+    roundRect(x, y + 4, w, h, 10);
     ctx.fill();
     ctx.fillStyle = CAR_COLORS[car.color % CAR_COLORS.length];
-    roundRect(x, y, s, s, 10);
+    roundRect(x, y, w, h, 10);
     ctx.fill();
     if (car.id === selected) {
       ctx.strokeStyle = '#17324f';
       ctx.lineWidth = 3;
-      roundRect(x + 2, y + 2, s - 4, s - 4, 8);
+      roundRect(x + 2, y + 2, w - 4, h - 4, 8);
+      ctx.stroke();
+    }
+    const locked = car.lock && cars.some((other) => other.id === car.lock);
+    if (locked) {
+      ctx.strokeStyle = '#17324f';
+      ctx.fillStyle = '#17324f';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x + 12, y + 12, 5, Math.PI, 0);
+      ctx.stroke();
+      ctx.fillRect(x + 7, y + 12, 10, 7);
+    }
+    if (car.shift) {
+      ctx.strokeStyle = 'rgba(255,255,255,.9)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x + w - 12, y + 12, 5, 0.4, 5.4);
       ctx.stroke();
     }
     ctx.fillStyle = 'rgba(255,255,255,.92)';
-    drawArrow(x + s / 2, y + s / 2, car.dir, s * 0.22);
+    drawArrow(g.x + car.c * g.cell + g.cell / 2 + off.x, g.y + car.r * g.cell + g.cell / 2 + off.y, car.dir, g.cell * 0.18);
   }
 
   for (const p of particles) {
@@ -304,9 +377,11 @@ function render() {
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';
     ctx.font = '700 28px "Trebuchet MS", "Segoe UI", sans-serif';
-    ctx.fillText('CLEARED', W / 2, H / 2 - 6);
+    ctx.fillText('CLEARED', W / 2, H / 2 - 16);
+    ctx.font = '700 20px "Trebuchet MS", "Segoe UI", sans-serif';
+    ctx.fillText(`${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}`, W / 2, H / 2 + 12);
     ctx.font = '700 16px "Trebuchet MS", "Segoe UI", sans-serif';
-    ctx.fillText(`Level ${levelNum}`, W / 2, H / 2 + 22);
+    ctx.fillText(`Level ${levelNum}`, W / 2, H / 2 + 34);
   }
   ctx.restore();
 }
@@ -327,7 +402,6 @@ function update(dt) {
     clearT -= dt;
     if (clearT <= 0) {
       levelNum += 1;
-      hearts = 3;
       loadLevel(levelNum);
     }
   }
@@ -345,7 +419,7 @@ function carAt(x, y) {
   const g = geom || metrics();
   const c = Math.floor((x - g.x) / g.cell);
   const r = Math.floor((y - g.y) / g.cell);
-  return cars.find((car) => car.r === r && car.c === c) || null;
+  return cars.find((car) => cellsOf(car).some(([rr, cc]) => rr === r && cc === c)) || null;
 }
 
 function resize() {
@@ -444,7 +518,7 @@ window.__game = {
       id: car.id,
       r: car.r,
       c: car.c,
-      ok: canExit(level.size, cars, level.exits, car),
+      ok: canExit(level, cars, car),
     })),
     started,
     size: level?.size ?? 0,
@@ -452,6 +526,12 @@ window.__game = {
   }),
   play(id) {
     activate(id);
+  },
+  goto(n) {
+    started = true;
+    startEl.classList.add('hidden');
+    levelNum = n;
+    loadLevel(n);
   },
 };
 requestAnimationFrame(frame);

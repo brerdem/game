@@ -206,7 +206,7 @@ function addRow(state, row, boss) {
       dead: false,
     });
   }
-  const chance = Math.min(0.2, 0.035 + state.level * 0.011);
+  const chance = Math.min(0.42, 0.12 + state.level * 0.018);
   const normals = state.blocks.filter((block) => block.rowId === rowId && block.kind === 'block');
   if (normals.length && state.rng() < chance) {
     const surprise = normals[Math.floor(state.rng() * normals.length)];
@@ -266,7 +266,18 @@ export function createRun(seed = 1, options = {}) {
   addRow(state, 0, false);
   addRow(state, 1, false);
   addRow(state, 2, false);
+  ensureEarlySurprise(state);
   return state;
+}
+
+function ensureEarlySurprise(state) {
+  if (state.blocks.some((block) => !block.dead && block.kind === 'surprise')) return;
+  const candidates = state.blocks.filter((block) => !block.dead && block.kind === 'block' && block.row <= 2);
+  if (!candidates.length) return;
+  const surprise = candidates[Math.floor(state.rng() * candidates.length)];
+  surprise.kind = 'surprise';
+  surprise.hp = 1;
+  surprise.maxHp = 1;
 }
 
 export function aimToward(state, x, y) {
@@ -320,9 +331,7 @@ function checkRows(state) {
   for (const id of state.liveRowIds) {
     if (alive.has(id) || state.clearedRowIds.has(id)) continue;
     state.clearedRowIds.add(id);
-    const before = state.rowsCleared;
     state.rowsCleared += 1;
-    if (Math.floor(state.rowsCleared / 3) > Math.floor(before / 3)) state.rewardQueued = true;
   }
 }
 
@@ -421,7 +430,8 @@ const SURPRISES = [
   { id: 'balls', good: true, title: '+3 balls', detail: 'Three balls join this run.' },
   { id: 'bomb', good: true, title: 'Bomb', detail: 'The blocks around it blow apart.' },
   { id: 'rowzap', good: true, title: 'Row lightning', detail: 'Every block in that row is struck.' },
-  { id: 'card', good: true, title: 'Free card', detail: 'Pick an upgrade after this volley.' },
+  { id: 'card', good: true, weight: 4, title: 'Card', detail: 'A card joins your hand.' },
+  { id: 'offer', good: true, weight: 2, title: 'Card offer', detail: 'Pick 1 of 3 cards after this volley.' },
   { id: 'gems', good: true, title: 'Gem shower', detail: '+5 bonus gems this run.' },
   { id: 'freeze', good: true, title: 'Freeze', detail: 'Blocks do not advance next turn.' },
   { id: 'rainbow', good: true, title: 'Rainbow ball', detail: 'A rainbow ball joins the volley.' },
@@ -475,10 +485,42 @@ function spawnGapBlocks(state, count, hp) {
   return placed;
 }
 
+function weightedSurprise(state, pool) {
+  const total = pool.reduce((sum, item) => sum + (item.weight || 1), 0);
+  let roll = state.rng() * total;
+  for (const item of pool) {
+    roll -= item.weight || 1;
+    if (roll <= 0) return item;
+  }
+  return pool[pool.length - 1];
+}
+
+function grantCard(state, card) {
+  state.held.push(card.id);
+  if (card.id === 'ball' || card.id === 'spare') {
+    state.magazine.push(pickColor(state));
+    if (countCard(state, 'ball') && countCard(state, 'spare')) state.magazine.push(pickColor(state));
+  }
+  return card;
+}
+
+function drawGiftCard(state) {
+  let pool = deckOf(state).filter((card) => !(card.unique && state.held.includes(card.id)));
+  if (!pool.length) pool = deckOf(state);
+  const total = pool.reduce((sum, card) => sum + offerWeight(state, card), 0);
+  let roll = state.rng() * total;
+  for (const card of pool) {
+    roll -= offerWeight(state, card);
+    if (roll <= 0) return card;
+  }
+  return pool[pool.length - 1];
+}
+
 function rollSurprise(state, block, at) {
   const good = state.rng() < 0.6;
   const pool = SURPRISES.filter((item) => item.good === good);
-  const effect = pool[Math.floor(state.rng() * pool.length)];
+  const effect = weightedSurprise(state, pool);
+  let detail = effect.detail;
   if (effect.id === 'balls') {
     for (let i = 0; i < 3; i++) state.pendingBalls.push(pickColor(state));
   } else if (effect.id === 'bomb') {
@@ -493,6 +535,9 @@ function rollSurprise(state, block, at) {
       hurt(state, other, dmg, c.x, c.y, true);
     }
   } else if (effect.id === 'card') {
+    const card = grantCard(state, drawGiftCard(state));
+    detail = `${card.title} joins your hand.`;
+  } else if (effect.id === 'offer') {
     state.rewardQueued = true;
   } else if (effect.id === 'gems') {
     state.bonusGems += 5;
@@ -536,7 +581,7 @@ function rollSurprise(state, block, at) {
   } else if (effect.id === 'wobble') {
     state.wobble = true;
   }
-  toast(state, effect.title, effect.detail, effect.good);
+  toast(state, effect.title, detail, effect.good);
 }
 
 function breakSurprise(state, block) {
@@ -893,11 +938,7 @@ function openCards(state) {
 export function chooseCard(state, index) {
   if (state.phase !== 'cards' || !state.cardChoices) return false;
   const card = state.cardChoices[Math.max(0, Math.min(state.cardChoices.length - 1, index))];
-  state.held.push(card.id);
-  if (card.id === 'ball' || card.id === 'spare') {
-    state.magazine.push(pickColor(state));
-    if (countCard(state, 'ball') && countCard(state, 'spare')) state.magazine.push(pickColor(state));
-  }
+  grantCard(state, card);
   state.cardChoices = null;
   beginShift(state);
   return true;

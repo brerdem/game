@@ -376,28 +376,34 @@ function drawSwap(cx, cy, s) {
 }
 
 function candyFill(x, y, w, h, color, radius) {
-  ctx.fillStyle = 'rgba(20, 32, 48, .28)';
-  roundRect(x + 2, y + 5, w, h, radius);
+  ctx.fillStyle = 'rgba(20, 32, 48, .16)';
+  roundRect(x + 1, y + 3, w, h, radius);
   ctx.fill();
-  const grad = ctx.createLinearGradient(x, y, x + w * 0.2, y + h);
-  grad.addColorStop(0, shiftColor(color, 55));
-  grad.addColorStop(0.42, color);
-  grad.addColorStop(1, shiftColor(color, -40));
+  const grad = ctx.createLinearGradient(x, y, x, y + h);
+  grad.addColorStop(0, shiftColor(color, 18));
+  grad.addColorStop(0.55, color);
+  grad.addColorStop(1, shiftColor(color, -16));
   ctx.fillStyle = grad;
   roundRect(x, y, w, h, radius);
   ctx.fill();
   ctx.save();
   roundRect(x, y, w, h, radius);
   ctx.clip();
-  ctx.fillStyle = 'rgba(255,255,255,.55)';
-  roundRect(x + w * 0.14, y + h * 0.08, w * 0.48, Math.max(6, h * 0.2), radius);
-  ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,.16)';
-  ctx.fillRect(x, y + h * 0.42, w, h * 0.08);
+  const hi = ctx.createLinearGradient(x, y, x, y + h * 0.42);
+  hi.addColorStop(0, 'rgba(255,255,255,.12)');
+  hi.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = hi;
+  ctx.fillRect(x, y, w, h * 0.42);
   ctx.restore();
-  ctx.strokeStyle = 'rgba(255,255,255,.65)';
+}
+
+function flatGate(x, y, w, h, color, radius) {
+  ctx.fillStyle = color;
+  roundRect(x, y, w, h, radius);
+  ctx.fill();
+  ctx.strokeStyle = shiftColor(color, -35);
   ctx.lineWidth = 2;
-  roundRect(x + 2, y + 2, w - 4, h - 4, Math.max(4, radius - 3));
+  roundRect(x + 1, y + 1, w - 2, h - 2, Math.max(3, radius - 2));
   ctx.stroke();
 }
 
@@ -519,13 +525,14 @@ function render() {
     const color = typeof gate === 'number' ? gate : gate.color;
     const uses = typeof gate === 'number' ? Infinity : gate.uses;
     const hex = uses <= 0 ? '#9aa8b5' : CAR_COLORS[color % CAR_COLORS.length];
-    candyFill(x, y, exitSize, exitSize, hex, exitSize * 0.28);
+    flatGate(x, y, exitSize, exitSize, hex, exitSize * 0.28);
     if (gate?.cycle?.length) {
       const next = gate.cycle[(gate.index + 1) % gate.cycle.length];
       ctx.save();
       roundRect(x, y, exitSize, exitSize, exitSize * 0.28);
       ctx.clip();
-      candyFill(x + exitSize * 0.46, y, exitSize * 0.54, exitSize, CAR_COLORS[next % CAR_COLORS.length], 4);
+      ctx.fillStyle = CAR_COLORS[next % CAR_COLORS.length];
+      ctx.fillRect(x + exitSize * 0.5, y, exitSize * 0.5, exitSize);
       ctx.restore();
       ctx.fillStyle = '#1a2740';
       ctx.beginPath();

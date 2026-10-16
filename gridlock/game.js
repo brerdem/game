@@ -19,6 +19,11 @@ let maxHearts = 3;
 let movesLeft = null;
 let movesUsed = 0;
 let stars = 0;
+let timeLeft = 0;
+let timeLimit = 0;
+let timerOn = false;
+let readyT = 0;
+let timeBonus = 0;
 let level = null;
 let cars = [];
 let selected = 0;
@@ -40,6 +45,12 @@ function loadLevel(n) {
   movesLeft = level.moveLimit;
   movesUsed = 0;
   stars = 0;
+  timeLimit = level.timeLimit || 45;
+  timeLeft = timeLimit;
+  timerOn = false;
+  readyT = 1.05;
+  timeBonus = 0;
+  phase = 'ready';
 }
 
 function startRun() {
@@ -50,10 +61,25 @@ function startRun() {
   loadLevel(1);
 }
 
-function gameOver() {
+function gameOver(reason) {
   phase = 'over';
+  timerOn = false;
+  document.querySelector('#over h1').textContent = reason === 'time' ? "TIME'S UP" : 'STUCK';
   finalScore.textContent = `Score ${score}  ·  Lv ${levelNum}`;
   overEl.classList.remove('hidden');
+}
+
+function formatTime(seconds) {
+  const total = Math.max(0, Math.ceil(seconds));
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+}
+
+function clockPaused() {
+  return !helpEl.classList.contains('hidden')
+    || !startEl.classList.contains('hidden')
+    || !overEl.classList.contains('hidden');
 }
 
 function metrics() {
@@ -169,7 +195,9 @@ function finishMove() {
   if (!cars.length) {
     const par = level.par || movesUsed;
     stars = movesUsed <= par ? 3 : movesUsed <= par + 1 ? 2 : 1;
-    score += 350 + hearts * 60 + stars * 50;
+    timeBonus = Math.ceil(timeLeft) * 10;
+    score += 350 + hearts * 60 + stars * 50 + timeBonus;
+    timerOn = false;
     phase = 'clear';
     clearT = 1.1;
     return;
@@ -245,7 +273,18 @@ function render() {
   ctx.font = '700 22px "Trebuchet MS", "Segoe UI", sans-serif';
   const hudY = Math.max(36, g.hud * 0.45);
   ctx.font = `700 ${Math.round(Math.max(22, Math.min(34, W * 0.03)))}px "Trebuchet MS", "Segoe UI", sans-serif`;
-  ctx.fillText(`Lv ${levelNum}`, W / 2, hudY);
+  ctx.fillText(`Lv ${levelNum}`, W / 2, hudY - 16);
+  const low = timerOn && timeLeft <= 8;
+  const pulse = low ? 1 + 0.07 * Math.sin(performance.now() / 90) : 1;
+  ctx.save();
+  ctx.translate(W / 2, hudY + 16);
+  ctx.scale(pulse, pulse);
+  ctx.fillStyle = low ? '#e23d4a' : '#17324f';
+  ctx.font = `700 ${Math.round(Math.max(28, Math.min(40, W * 0.04)))}px "Trebuchet MS", "Segoe UI", sans-serif`;
+  ctx.fillText(phase === 'ready' ? 'READY' : formatTime(timeLeft), 0, 0);
+  ctx.restore();
+  ctx.fillStyle = '#17324f';
+  ctx.font = `700 ${Math.round(Math.max(22, Math.min(34, W * 0.03)))}px "Trebuchet MS", "Segoe UI", sans-serif`;
   ctx.textAlign = 'right';
   ctx.fillText(String(score), W - 20, hudY);
   for (let i = 0; i < maxHearts; i++) drawHeart(28 + i * 32, hudY, i < hearts);
@@ -370,9 +409,9 @@ function render() {
   }
 
   if (phase === 'clear') {
-    const bw = Math.min(280, W - 48);
+    const bw = Math.min(420, W - 48);
     ctx.fillStyle = 'rgba(23,50,79,.88)';
-    roundRect((W - bw) / 2, H / 2 - 46, bw, 92, 18);
+    roundRect((W - bw) / 2, H / 2 - 52, bw, 108, 18);
     ctx.fill();
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';
@@ -381,7 +420,7 @@ function render() {
     ctx.font = '700 20px "Trebuchet MS", "Segoe UI", sans-serif';
     ctx.fillText(`${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}`, W / 2, H / 2 + 12);
     ctx.font = '700 16px "Trebuchet MS", "Segoe UI", sans-serif';
-    ctx.fillText(`Level ${levelNum}`, W / 2, H / 2 + 34);
+    ctx.fillText(`Level ${levelNum}  ·  time +${timeBonus}`, W / 2, H / 2 + 34);
   }
   ctx.restore();
 }
@@ -389,6 +428,20 @@ function render() {
 function update(dt) {
   shake = Math.max(0, shake - dt * 22);
   flash = Math.max(0, flash - dt);
+  const paused = clockPaused();
+  if (phase === 'ready') {
+    if (!paused) readyT -= dt;
+    if (readyT <= 0) {
+      phase = 'idle';
+      timerOn = true;
+    }
+  } else if (timerOn && !paused && phase !== 'clear' && phase !== 'over') {
+    timeLeft -= dt;
+    if (timeLeft <= 0) {
+      timeLeft = 0;
+      return gameOver('time');
+    }
+  }
   for (const p of particles) {
     p.life -= dt;
     p.x += p.vx * dt;
@@ -514,6 +567,8 @@ window.__game = {
     phase,
     level: levelNum,
     hearts,
+    timeLeft,
+    timeLimit,
     cars: cars.map((car) => ({
       id: car.id,
       r: car.r,
@@ -532,6 +587,12 @@ window.__game = {
     startEl.classList.add('hidden');
     levelNum = n;
     loadLevel(n);
+  },
+  clock(seconds) {
+    timeLeft = seconds;
+    timerOn = true;
+    readyT = 0;
+    if (phase === 'ready' || phase === 'idle') phase = 'idle';
   },
 };
 requestAnimationFrame(frame);

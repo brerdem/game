@@ -102,6 +102,7 @@ function cloneLevel(level) {
     hearts: level.hearts,
     par: level.par,
     moveLimit: level.moveLimit,
+    timeLimit: level.timeLimit,
     rocks: (level.rocks || []).map((rock) => ({ ...rock })),
     exits: {
       up: level.exits.up.map(cloneExitCell),
@@ -155,9 +156,31 @@ const HANDMADE = [
   },
 ];
 
+export function timeLimitFor(level) {
+  const cars = level.cars?.length || 0;
+  const long = (level.cars || []).filter((car) => (car.span || 1) > 1).length;
+  const locks = (level.cars || []).filter((car) => car.lock).length;
+  const shift = (level.cars || []).filter((car) => car.shift).length;
+  const gates = [...(level.exits?.up || []), ...(level.exits?.down || []), ...(level.exits?.left || []), ...(level.exits?.right || [])];
+  const cycles = gates.filter((gate) => gate?.cycle?.length).length;
+  const once = gates.filter((gate) => gate?.uses === 1).length;
+  const rocks = (level.rocks || []).length;
+  const seconds = 22
+    + cars * 3.4
+    + (level.size || 4) * 1.2
+    + locks * 5
+    + long * 4
+    + cycles * 6
+    + once * 4
+    + shift * 6
+    + rocks * 2;
+  return Math.max(32, Math.round(seconds));
+}
+
 function normalizeLevel(level) {
   const copy = cloneLevel(level);
   if (!copy.rocks) copy.rocks = [];
+  copy.timeLimit = timeLimitFor(copy);
   return copy;
 }
 
@@ -268,6 +291,7 @@ function tryGenerate(level, rng) {
     moveLimit: feats.slack == null ? null : solution.length + feats.slack,
   };
   decorate(built, feats, rng);
+  built.timeLimit = timeLimitFor(built);
   return validate(built) ? built : null;
 }
 

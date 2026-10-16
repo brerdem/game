@@ -71,6 +71,11 @@
     box-shadow: none;
   }
   button.secondary:active { transform: none; box-shadow: none; background: rgba(255,255,255,.12); }
+  #over button {
+    width: min(420px, 100%);
+    padding: 14px 28px;
+    font-size: clamp(22px, 4vw, 28px);
+  }
   .help { z-index: 6; background: rgba(12, 20, 30, .62); }
   .sheet {
     width: min(92%, 460px);
@@ -125,6 +130,7 @@
     <div id="over" class="overlay hidden">
       <h1>STUCK</h1>
       <p id="finalScore">0</p>
+      <button type="button" id="retryLevelBtn">Restart This Level</button>
       <button type="button" id="retryBtn">Restart</button>
     </div>
   </div>

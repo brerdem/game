@@ -14,6 +14,7 @@ let started = false;
 let phase = 'idle';
 let levelNum = 1;
 let score = 0;
+let levelStartScore = 0;
 let hearts = 3;
 let maxHearts = 3;
 let movesLeft = null;
@@ -37,6 +38,7 @@ let geom = null;
 const FONT = '"Fredoka", "Trebuchet MS", "Segoe UI", sans-serif';
 
 function loadLevel(n) {
+  levelStartScore = score;
   level = generateLevel(n);
   cars = level.cars.map((car) => ({ ...car }));
   selected = cars[0]?.id ?? 0;
@@ -60,7 +62,19 @@ function startRun() {
   score = 0;
   hearts = 3;
   particles = [];
+  heartPops = [];
+  shake = 0;
+  flash = 0;
   loadLevel(1);
+}
+
+function restartLevel() {
+  score = levelStartScore;
+  particles = [];
+  heartPops = [];
+  shake = 0;
+  flash = 0;
+  loadLevel(levelNum);
 }
 
 function gameOver(reason) {
@@ -69,6 +83,7 @@ function gameOver(reason) {
   document.querySelector('#over h1').textContent = reason === 'time' ? "TIME'S UP" : 'STUCK';
   finalScore.textContent = `Score ${score}  ·  Lv ${levelNum}`;
   overEl.classList.remove('hidden');
+  document.getElementById('retryLevelBtn').focus();
 }
 
 function formatTime(seconds) {
@@ -754,6 +769,12 @@ document.getElementById('startBtn').addEventListener('click', (e) => {
   startEl.classList.add('hidden');
   startRun();
 });
+document.getElementById('retryLevelBtn').addEventListener('click', (e) => {
+  e.currentTarget.blur();
+  overEl.classList.add('hidden');
+  started = true;
+  restartLevel();
+});
 document.getElementById('retryBtn').addEventListener('click', (e) => {
   e.currentTarget.blur();
   overEl.classList.add('hidden');
@@ -776,18 +797,12 @@ window.addEventListener('keydown', (e) => {
     }
     return;
   }
+  if (phase === 'over') return;
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', 'Enter'].includes(e.key)) e.preventDefault();
   if (!started) {
     if (e.key === 'Enter' || e.key === ' ') {
       started = true;
       startEl.classList.add('hidden');
-      startRun();
-    }
-    return;
-  }
-  if (phase === 'over') {
-    if (e.key === 'Enter' || e.key === ' ') {
-      overEl.classList.add('hidden');
       startRun();
     }
     return;

@@ -4,6 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <title>Gridlock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232176d4'/%3E%3C/svg%3E" />
 <style>
   * { box-sizing: border-box; }
@@ -13,7 +16,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    font-family: "Fredoka", "Trebuchet MS", "Segoe UI", sans-serif;
     overscroll-behavior: none;
     user-select: none;
   }
@@ -112,7 +115,7 @@
         <h2 id="helpTitle">How to play</h2>
         <p><strong>Goal.</strong> Slide every car off the board. Levels 1–3 teach the basics. Later boards are bigger, and each new twist shows up on its own level before they combine.</p>
         <p><strong>Moves.</strong> A car only travels the way its arrow points. It leaves if the path is clear and the exit matches its color. A bump costs a heart. Some cars are two cells long.</p>
-        <p><strong>Later twists.</strong> Gray rocks block paths. A lock stays shut until the car it is chained to leaves. A small second square on an exit is the color it will switch to after the next car uses it. An exit marked 1 closes after one use. A circular arrow means that car changes color each time another car leaves.</p>
+        <p><strong>Later twists.</strong> Chunky gray stones block paths. A locked car is dimmed under a big padlock until the car it is chained to leaves. A color-changing car is split between its current color and the next one, with a large swap icon. An exit with a second color beside it will switch after the next car uses it. A round badge with 1 means that gate closes after one use.</p>
         <p><strong>Hearts, moves, and time.</strong> Early levels give 3 hearts. From level 9 you get 2. From level 4 a move budget appears. A countdown starts after a short Ready beat. Its length depends on the board: more cars, a bigger grid, and twists such as locks, long cars, and switching or one-use exits add seconds. The clock turns red in the last few seconds. It pauses while this popup is open. Run out of hearts, moves, or time and the run ends.</p>
         <p><strong>Score.</strong> 100 points for each car that exits, plus a bonus for the level, hearts left, stars, and time still on the clock.</p>
         <p><strong>Controls.</strong> Click a car to send it. Arrow keys move the selection. Enter or Space sends the selected car.</p>
